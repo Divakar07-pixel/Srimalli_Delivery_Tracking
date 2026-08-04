@@ -13,8 +13,7 @@ type FlowState =
   | { step: "scanning"; file: File }
   | { step: "timeout"; file: File }
   | { step: "failed"; file: File }
-  | { step: "review"; file: File; data: ExtractedBillData; partial: boolean }
-  | { step: "manual"; file: File | null };
+  | { step: "review"; file: File; data: ExtractedBillData; partial: boolean };
 
 interface Props {
   /** Called once the admin confirms — either from a successful/partial scan review, or manual entry. */
@@ -114,7 +113,7 @@ export function BillCapture({ onProceed }: Props) {
             <p className="font-medium">Scanning Bill...</p>
             <p className="text-sm text-muted-foreground">You don't have to wait — you can enter details yourself.</p>
           </div>
-          <Button variant="outline" onClick={() => setState({ step: "manual", file: state.file })}>
+          <Button variant="outline" onClick={() => onProceed(state.file, null)}>
             Enter Details Manually
           </Button>
         </CardContent>
@@ -129,13 +128,13 @@ export function BillCapture({ onProceed }: Props) {
           <AlertTriangle className="h-8 w-8 text-warning" />
           <div>
             <p className="font-medium">Bill scanning is taking longer than expected.</p>
-            <p className="text-sm text-muted-foreground">Your uploaded bill has been saved — no need to re-upload it.</p>
+            <p className="text-sm text-muted-foreground">Your uploaded bill is ready to attach to the order — no need to re-upload it.</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={retry}>
               Try Again
             </Button>
-            <Button onClick={() => setState({ step: "manual", file: state.file })}>Continue Manually</Button>
+            <Button onClick={() => onProceed(state.file, null)}>Continue Manually</Button>
           </div>
         </CardContent>
       </Card>
@@ -149,13 +148,13 @@ export function BillCapture({ onProceed }: Props) {
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
           <div>
             <p className="font-medium">We couldn't read all the details from this bill.</p>
-            <p className="text-sm text-muted-foreground">The bill photo is still saved with this order.</p>
+            <p className="text-sm text-muted-foreground">You can keep this bill attached and enter the details manually.</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={retry}>
               Try Again
             </Button>
-            <Button onClick={() => setState({ step: "manual", file: state.file })}>Enter Details Manually</Button>
+            <Button onClick={() => onProceed(state.file, null)}>Enter Details Manually</Button>
           </div>
         </CardContent>
       </Card>
@@ -166,8 +165,6 @@ export function BillCapture({ onProceed }: Props) {
     return <ReviewScreen file={state.file} data={state.data} partial={state.partial} onConfirm={onProceed} />;
   }
 
-  // manual — hand off to the parent's manual form, keeping the uploaded file (if any) attached.
-  onProceed(state.file, null);
   return null;
 }
 

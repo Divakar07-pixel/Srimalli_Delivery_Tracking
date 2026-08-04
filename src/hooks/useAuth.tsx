@@ -5,28 +5,40 @@ import { supabase } from "@/lib/supabase";
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
+  isAdmin: boolean;
 }
 
-const AuthContext = createContext<AuthContextValue>({ session: null, loading: true });
+const AuthContext = createContext<AuthContextValue>({ session: null, loading: true, isAdmin: false });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    const syncSession = async (nextSession: Session | null) => {
+      setSession(nextSession);
+      if (!nextSession) {
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+
+      const { data } = await supabase.rpc("is_admin");
+      setIsAdmin(data === true);
       setLoading(false);
-    });
+    };
+
+    supabase.auth.getSession().then(({ data }) => syncSession(data.session));
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
+      void syncSession(newSession);
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ session, loading, isAdmin }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

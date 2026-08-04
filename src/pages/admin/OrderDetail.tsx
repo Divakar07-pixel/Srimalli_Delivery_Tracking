@@ -29,7 +29,7 @@ import {
 import { getAdminInvoiceSignedUrl } from "@/services/invoices";
 import { getSettings } from "@/services/settings";
 import { buildCallLink } from "@/services/whatsapp";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, isSafeExternalUrl } from "@/lib/utils";
 import { ACTIVE_STATUS_FLOW, STATUS_LABEL } from "@/constants/status";
 import { useToast } from "@/hooks/useToast";
 import type { Order, OrderItem, OrderStatusHistoryRow, Invoice, Customer } from "@/types/database";
@@ -49,6 +49,7 @@ export function OrderDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   // edit form state
   const [editItems, setEditItems] = useState<DraftOrderItem[]>([]);
@@ -92,12 +93,16 @@ export function OrderDetail() {
   }, [id]);
 
   const handleStatusUpdate = async (status: Order["status"]) => {
+    if (updatingStatus) return;
+    setUpdatingStatus(true);
     try {
       await updateOrderStatus(id, status);
       toast({ title: `Marked as ${STATUS_LABEL[status]}`, variant: "success" });
       load();
     } catch (e) {
       toast({ title: "Couldn't update status", description: (e as Error).message, variant: "error" });
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -130,6 +135,10 @@ export function OrderDetail() {
 
   const handleSaveEdit = async () => {
     if (!order) return;
+    if (locationUrl.trim() && !isSafeExternalUrl(locationUrl)) {
+      toast({ title: "Invalid delivery link", description: "Use a valid link starting with https://.", variant: "error" });
+      return;
+    }
     setSaving(true);
     try {
       const validItems = editItems.filter((i) => i.product_name.trim());
@@ -221,10 +230,12 @@ export function OrderDetail() {
           </>
         )}
         {nextStatus && (
-          <Button onClick={() => handleStatusUpdate(nextStatus)}>Mark {STATUS_LABEL[nextStatus]}</Button>
+          <Button onClick={() => handleStatusUpdate(nextStatus)} loading={updatingStatus} disabled={updatingStatus}>
+            Mark {STATUS_LABEL[nextStatus]}
+          </Button>
         )}
         {order.status !== "cancelled" && order.status !== "delivered" && (
-          <Button variant="destructive" onClick={() => handleStatusUpdate("cancelled")}>
+          <Button variant="destructive" onClick={() => handleStatusUpdate("cancelled")} disabled={updatingStatus}>
             Cancel Order
           </Button>
         )}
@@ -252,9 +263,9 @@ export function OrderDetail() {
           <InfoRow label="Invoice Date" value={formatDate(order.invoice_date)} />
           <InfoRow label="Order Date" value={formatDate(order.order_date)} />
           <InfoRow label="Expected Delivery" value={formatDate(order.expected_delivery_date)} />
-          {order.delivery_location_url && (
+          {isSafeExternalUrl(order.delivery_location_url) && (
             <a
-              href={order.delivery_location_url}
+              href={order.delivery_location_url ?? undefined}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-primary hover:underline"

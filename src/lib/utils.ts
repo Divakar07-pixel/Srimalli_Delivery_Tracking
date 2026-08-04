@@ -56,3 +56,14 @@ export function generateTrackingId(): string {
   }
   return `SFP-${out}`;
 }
+
+/** Only allow normal web links in fields that are rendered as external anchors. */
+export function isSafeExternalUrl(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}

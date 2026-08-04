@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Package, PlusCircle, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/services/auth";
@@ -13,10 +13,12 @@ const NAV_ITEMS = [
 
 export function AdminShell() {
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
       await signOut();
+      navigate("/admin/login", { replace: true });
     } catch (e) {
       toast({ title: "Sign out failed", description: (e as Error).message, variant: "error" });
     }

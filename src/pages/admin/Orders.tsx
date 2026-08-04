@@ -68,7 +68,7 @@ export function Orders() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by customer, mobile, invoice, or order ID"
+            placeholder="Search by mobile, invoice, or tracking ID"
             className="pl-9"
           />
         </div>

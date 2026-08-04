@@ -1,5 +1,5 @@
-import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Suspense, lazy, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ToastProvider } from "@/hooks/useToast";
 import { useThemeSync } from "@/hooks/useThemeSync";
@@ -31,6 +31,21 @@ function AdminFallback() {
   );
 }
 
+/** Restores the route saved by the GitHub Pages 404 fallback. */
+function GitHubPagesRedirect() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const target = new URLSearchParams(location.search).get("redirect");
+    if (target?.startsWith("/") && !target.startsWith("//")) {
+      navigate(target, { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  return null;
+}
+
 function App() {
   // Public pages follow system theme by default; the admin shell re-syncs
   // to the saved preference once settings load (see AdminShell/Settings).
@@ -39,7 +54,8 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
+          <GitHubPagesRedirect />
           <Routes>
             {/* Public */}
             <Route path="/" element={<Landing />} />

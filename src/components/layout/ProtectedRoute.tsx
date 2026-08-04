@@ -2,7 +2,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
 export function ProtectedRoute() {
-  const { session, loading } = useAuth();
+  const { session, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -12,7 +12,7 @@ export function ProtectedRoute() {
     );
   }
 
-  if (!session) {
+  if (!session || !isAdmin) {
     return <Navigate to="/admin/login" replace />;
   }
 

@@ -59,7 +59,7 @@ supabase/
 
 ### 1. Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - A free [Supabase](https://supabase.com) account
 - The [Supabase CLI](https://supabase.com/docs/guides/cli) (`npm install -g supabase`) for running migrations and deploying the Edge Function
 
@@ -212,6 +212,43 @@ npm run preview      # preview the production build locally
 | `settings` | Single-row table for company name, logo, contact info, WhatsApp templates, theme. |
 
 ---
+
+## Production Deployment
+
+### 1. Supabase setup
+
+1. Create or select the Supabase project, then copy its Project URL and anon/publishable key into local `.env` using `.env.example` as the template. Never expose a service-role key to Vite or GitHub Pages.
+2. Run the existing migrations in order, including `0005_admin_profiles_and_hardened_rls.sql`. The first four migrations create the delivery schema, public tracking RPCs, and private invoice storage; migration 0005 adds role-based admin access. Run [VERIFY_DATABASE.sql](supabase/VERIFY_DATABASE.sql) afterward for read-only live schema, RLS, index, constraint, and bucket checks.
+3. Deploy the invoice URL function: `supabase functions deploy get-invoice-url`.
+4. In Authentication > URL Configuration, add your production URLs, including `https://divakar07-pixel.github.io/Srimalli_Delivery_Tracking/` and the Vercel URL. The password-reset redirect must be allowed.
+5. Create the first Auth user through Authentication > Users, then run [FIRST_ADMIN_SETUP.sql](supabase/FIRST_ADMIN_SETUP.sql) in SQL Editor after replacing its placeholders. Direct inserts into `auth.users` are intentionally avoided because Supabase Auth manages password hashing and identities.
+
+The `invoices` bucket is private and accepts JPG, PNG, WEBP, and PDF files up to 15 MB. The public `branding` bucket is limited to logo assets. Only explicit `profiles.role = 'admin'` users receive CRUD access; public users use the existing narrow tracking RPCs only.
+
+### 2. GitHub Pages
+
+The repository includes `.github/workflows/deploy-pages.yml`. In GitHub, open Settings > Pages and set Source to **GitHub Actions**. Add these repository secrets:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Each push to `main` validates the app and deploys a build with base path `/Srimalli_Delivery_Tracking/`. GitHub Pages is static hosting, so direct deep-link refreshes (for example `/admin/orders`) cannot be rewritten to the Vite entry point. Share the root URL and let React navigation handle app routes, or deploy the customer/admin SPA to Vercel for full refresh support.
+
+### 3. Vercel
+
+Import this repository in Vercel, choose the **Vite** preset, and configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Do not set `VITE_DEPLOY_TARGET`; the app then builds for `/`, and the included `vercel.json` supplies SPA rewrites for direct route refreshes.
+
+### 4. Local production verification
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+
+# Optional: verify the GitHub Pages base-path bundle locally
+VITE_DEPLOY_TARGET=github-pages npm run build
+```
 
 ## License
 

@@ -28,7 +28,7 @@ export function Dashboard() {
         { label: "Today's Orders", value: counts.today, icon: Clock },
         { label: "At Hub", value: counts.atHub, icon: Warehouse },
         { label: "Out for Delivery", value: counts.outForDelivery, icon: Truck },
-        { label: "Delivered", value: counts.delivered, icon: CheckCircle2 },
+        { label: "Delivered Today", value: counts.deliveredToday, icon: CheckCircle2 },
         { label: "Pending", value: counts.pending, icon: Hourglass },
         { label: "Cancelled", value: counts.cancelled, icon: XCircle },
       ]

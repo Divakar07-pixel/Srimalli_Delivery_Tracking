@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <script>
+      // GitHub Pages cannot rewrite SPA routes. Preserve the requested route
+      // and return to the Vite base path, where App restores it safely.
+      const base = "/Srimalli_Delivery_Tracking/";
+      const requested = window.location.pathname.replace(/^\/Srimalli_Delivery_Tracking/, "") + window.location.search + window.location.hash;
+      window.location.replace(base + "?redirect=" + encodeURIComponent(requested));
+    </script>
+  </body>
+</html>

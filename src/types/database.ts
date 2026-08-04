@@ -6,6 +6,17 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
+export type AppRole = "admin";
+
+export interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  role: AppRole;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -80,6 +91,7 @@ export interface Settings {
 export interface Database {
   public: {
     Tables: {
+      profiles: { Row: Profile; Insert: Partial<Profile>; Update: Partial<Profile> };
       customers: { Row: Customer; Insert: Partial<Customer>; Update: Partial<Customer> };
       orders: { Row: Order; Insert: Partial<Order>; Update: Partial<Order> };
       order_items: { Row: OrderItem; Insert: Partial<OrderItem>; Update: Partial<OrderItem> };
@@ -107,6 +119,7 @@ export interface Database {
       };
       get_order_tracking: { Args: { p_reference: string }; Returns: unknown };
       get_public_settings: { Args: Record<string, never>; Returns: unknown };
+      is_admin: { Args: Record<string, never>; Returns: boolean };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

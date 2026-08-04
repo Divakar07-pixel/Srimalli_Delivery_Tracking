@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { generateTrackingId, normalizeMobile } from "@/lib/utils";
+import { generateTrackingId, isSafeExternalUrl, normalizeMobile } from "@/lib/utils";
 import type { DraftOrder } from "@/types/order";
 import type { Order, OrderItem, OrderStatus } from "@/types/database";
 
@@ -39,12 +39,19 @@ export async function listOrders(filters: OrderListFilters = {}) {
   }
 
   if (search.trim()) {
-    // Search across invoice number / tracking id directly; customer name/mobile
-    // handled client-side after fetch for simplicity, or via a dedicated RPC
-    // for larger datasets.
-    query = query.or(
-      `invoice_number.ilike.%${search}%,tracking_id.ilike.%${search}%`
-    );
+    const digits = normalizeMobile(search);
+    if (digits.length >= 6) {
+      const { data: matchingCustomers, error: customerError } = await supabase
+        .from("customers")
+        .select("id")
+        .ilike("mobile", `%${digits}%`);
+      if (customerError) throw new Error("Unable to search orders. Please try again.");
+      const customerIds = (matchingCustomers ?? []).map((customer) => customer.id);
+      if (customerIds.length === 0) return { rows: [], count: 0 };
+      query = query.in("customer_id", customerIds);
+    } else {
+      query = query.or(`invoice_number.ilike.%${search}%,tracking_id.ilike.%${search}%`);
+    }
   }
 
   const from = (page - 1) * pageSize;
@@ -117,6 +124,9 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
   if (!draft.invoiceNumber.trim()) {
     throw new Error("Invoice number is required.");
   }
+  if (draft.deliveryLocationUrl.trim() && !isSafeExternalUrl(draft.deliveryLocationUrl)) {
+    throw new Error("Please enter a valid Google Maps or website link starting with https://.");
+  }
 
   const duplicate = await invoiceNumberExists(draft.invoiceNumber);
   if (duplicate) {
@@ -166,7 +176,12 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
     .select("*")
     .single();
 
-  if (orderError || !order) throw new Error(FRIENDLY_ERROR);
+  if (orderError || !order) {
+    if (orderError?.code === "23505") {
+      throw new Error(`Invoice number "${draft.invoiceNumber.trim()}" already exists. Please use a unique invoice number.`);
+    }
+    throw new Error(FRIENDLY_ERROR);
+  }
 
   const itemRows = draft.items
     .filter((i) => i.product_name.trim())
@@ -225,7 +240,7 @@ export interface DashboardCounts {
   today: number;
   atHub: number;
   outForDelivery: number;
-  delivered: number;
+  deliveredToday: number;
   pending: number;
   cancelled: number;
 }
@@ -233,13 +248,19 @@ export interface DashboardCounts {
 export async function getDashboardCounts(): Promise<DashboardCounts> {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ count: total }, { count: todayCount }, { count: atHub }, { count: outForDelivery }, { count: delivered }, { count: pending }, { count: cancelled }] =
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const [{ count: total }, { count: todayCount }, { count: atHub }, { count: outForDelivery }, { count: deliveredToday }, { count: pending }, { count: cancelled }] =
     await Promise.all([
       supabase.from("orders").select("*", { count: "exact", head: true }),
       supabase.from("orders").select("*", { count: "exact", head: true }).eq("order_date", today),
       supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "arrived_at_hub"),
       supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "out_for_delivery"),
-      supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "delivered"),
+      supabase
+        .from("order_status_history")
+        .select("*", { count: "exact", head: true })
+        .eq("new_status", "delivered")
+        .gte("changed_at", todayStart.toISOString()),
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
@@ -252,7 +273,7 @@ export async function getDashboardCounts(): Promise<DashboardCounts> {
     today: todayCount ?? 0,
     atHub: atHub ?? 0,
     outForDelivery: outForDelivery ?? 0,
-    delivered: delivered ?? 0,
+    deliveredToday: deliveredToday ?? 0,
     pending: pending ?? 0,
     cancelled: cancelled ?? 0,
   };

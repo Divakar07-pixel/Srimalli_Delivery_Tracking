@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 /**
  * Bill scanning / OCR architecture.
  *
@@ -9,8 +11,8 @@
  * To wire up a real OCR provider (Google Vision, AWS Textract, an LLM
  * vision call, etc.), implement `runOcr` below — call your provider from a
  * Supabase Edge Function (keep API keys server-side) and parse its response
- * into `ExtractedBillData`. This file currently ships a stub that always
- * "fails" gracefully so the manual-entry path is exercised by default.
+ * into `ExtractedBillData`. If the optional Edge Function has not been
+ * deployed, this still fails gracefully and manual entry remains available.
  */
 
 export interface ExtractedBillData {
@@ -46,21 +48,24 @@ export async function scanBill(file: File): Promise<OcrOutcome> {
   return Promise.race([attempt, timeout]);
 }
 
-async function runOcr(_file: File): Promise<OcrOutcome> {
-  // --- Plug in a real provider here ---
-  // Example shape once wired to an Edge Function:
-  //
-  // const { data, error } = await supabase.functions.invoke("scan-bill", {
-  //   body: formData,
-  // });
-  // if (error || !data) return { status: "failed" };
-  // const extracted = data as ExtractedBillData;
-  // const fieldCount = Object.values(extracted).filter(Boolean).length;
-  // return fieldCount === 0
-  //   ? { status: "failed" }
-  //   : { status: fieldCount >= 5 ? "success" : "partial", data: extracted };
+async function runOcr(file: File): Promise<OcrOutcome> {
+  const formData = new FormData();
+  formData.append("bill", file, file.name);
+  const { data, error } = await supabase.functions.invoke("scan-bill", { body: formData });
+  if (error || !data || typeof data !== "object") return { status: "failed" };
 
-  return { status: "failed" };
+  const extracted = data as ExtractedBillData;
+  const fieldCount = [
+    extracted.customerName,
+    extracted.mobile,
+    extracted.invoiceNumber,
+    extracted.invoiceDate,
+    extracted.address,
+    extracted.grandTotal,
+    extracted.items?.length,
+  ].filter(Boolean).length;
+  if (fieldCount === 0) return { status: "failed" };
+  return { status: fieldCount >= 5 ? "success" : "partial", data: extracted };
 }
 
 /** Returns true if the outcome carries at least one usable field. */

@@ -8,17 +8,25 @@ import { OrderTimeline } from "@/components/tracking/OrderTimeline";
 import { StatusBadge } from "@/components/orders/StatusBadge";
 import { getOrderTracking } from "@/services/tracking";
 import { getPublicInvoiceUrl } from "@/services/invoices";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, isSafeExternalUrl } from "@/lib/utils";
 import type { OrderTrackingDetail } from "@/types/order";
 import { useToast } from "@/hooks/useToast";
 
 export function TrackDetail() {
   const { reference = "" } = useParams();
   const [order, setOrder] = useState<OrderTrackingDetail | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    getOrderTracking(reference).then(setOrder);
+    setOrder(undefined);
+    setError(null);
+    getOrderTracking(reference)
+      .then(setOrder)
+      .catch((err) => {
+        setError((err as Error).message);
+        setOrder(null);
+      });
   }, [reference]);
 
   const openInvoice = async (mode: "view" | "download") => {
@@ -48,7 +56,11 @@ export function TrackDetail() {
   if (order === null) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16">
-        <EmptyState title="No matching orders." description="This tracking link may be incorrect." />
+        <EmptyState
+          title={error ? "We couldn't load this order." : "No matching orders."}
+          description={error ? "Check your connection and try again." : "This tracking link may be incorrect."}
+          action={error ? <Button onClick={() => window.location.reload()}>Try again</Button> : undefined}
+        />
       </div>
     );
   }
@@ -90,7 +102,7 @@ export function TrackDetail() {
           </CardContent>
         </Card>
 
-        {order.delivery_location_url && (
+        {isSafeExternalUrl(order.delivery_location_url) && (
           <Card className="mb-4">
             <CardHeader>
               <CardTitle className="text-base">Delivery Location</CardTitle>
@@ -101,7 +113,7 @@ export function TrackDetail() {
                 <span>Open the saved delivery location in maps.</span>
               </div>
               <a
-                href={order.delivery_location_url}
+                href={order.delivery_location_url ?? undefined}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
