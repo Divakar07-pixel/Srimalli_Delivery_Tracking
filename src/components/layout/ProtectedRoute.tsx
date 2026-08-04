@@ -1,8 +1,9 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
 export function ProtectedRoute() {
-  const { session, loading, isAdmin } = useAuth();
+  const { session, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -12,7 +13,7 @@ export function ProtectedRoute() {
     );
   }
 
-  if (!session || !isAdmin) {
+  if (!session && location.pathname !== "/admin/login") {
     return <Navigate to="/admin/login" replace />;
   }
 
