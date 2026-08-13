@@ -35,12 +35,57 @@ export interface PublicSettings {
   logo_url: string | null;
   business_phone: string | null;
   business_address: string | null;
+  shop_latitude: number | null;
+  shop_longitude: number | null;
+}
+
+export interface DeliveryPartnerLocation {
+  name: string | null;
+  mobile: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  updated_at: string | null;
+}
+
+export async function getDeliveryPartnerLocation(reference: string): Promise<DeliveryPartnerLocation | null> {
+  const { data, error } = await supabase.rpc("get_delivery_partner_location", { p_reference: reference.trim() });
+  if (error) throw new Error("Unable to retrieve the delivery partner location.");
+  return (data as DeliveryPartnerLocation | null) ?? null;
+}
+
+export interface DeliveryAssignment {
+  invoice_number: string;
+  customer_name: string;
+  customer_latitude: number | null;
+  customer_longitude: number | null;
+}
+
+export async function getDeliveryAssignment(token: string): Promise<DeliveryAssignment | null> {
+  const { data, error } = await supabase.rpc("get_delivery_assignment", { p_token: token });
+  if (error) throw new Error("This delivery link is invalid or has expired.");
+  return (data as DeliveryAssignment | null) ?? null;
+}
+
+export async function updateDeliveryPartnerLocation(token: string, latitude: number, longitude: number) {
+  const { error } = await supabase.rpc("update_delivery_partner_location", {
+    p_token: token,
+    p_latitude: latitude,
+    p_longitude: longitude,
+  });
+  if (error) throw new Error("Unable to share your location. Please try again.");
 }
 
 export async function getPublicSettings(): Promise<PublicSettings> {
   const { data, error } = await supabase.rpc("get_public_settings");
   if (error || !data) {
-    return { company_name: "Srimalli Food Product", logo_url: null, business_phone: null, business_address: null };
+    return {
+      company_name: "Srimalli Food Product",
+      logo_url: null,
+      business_phone: null,
+      business_address: null,
+      shop_latitude: null,
+      shop_longitude: null,
+    };
   }
   return data as PublicSettings;
 }

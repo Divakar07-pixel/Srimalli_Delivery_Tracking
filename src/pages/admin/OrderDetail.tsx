@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { ArrowLeft, Phone, Eye, Download, Trash2, Save, MapPin } from "lucide-react";
+import { ArrowLeft, Phone, Eye, Download, Trash2, Save, MapPin, Navigation, Copy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { StatusBadge } from "@/components/orders/StatusBadge";
 import { WhatsAppPanel } from "@/components/orders/WhatsAppPanel";
 import { OrderTimeline } from "@/components/tracking/OrderTimeline";
 import { ItemsEditor, blankItem } from "@/components/orders/ItemsEditor";
+import { MapLinkInput } from "@/components/map/MapLinkInput";
 import {
   getOrderDetail,
   updateOrderStatus,
@@ -30,6 +31,7 @@ import { getAdminInvoiceSignedUrl } from "@/services/invoices";
 import { getSettings } from "@/services/settings";
 import { buildCallLink } from "@/services/whatsapp";
 import { formatCurrency, formatDate, isSafeExternalUrl } from "@/lib/utils";
+import { isGoogleMapsLink, parseCoordinates, type LatLng } from "@/lib/map";
 import { ACTIVE_STATUS_FLOW, STATUS_LABEL } from "@/constants/status";
 import { useToast } from "@/hooks/useToast";
 import type { Order, OrderItem, OrderStatusHistoryRow, Invoice, Customer } from "@/types/database";
@@ -45,18 +47,22 @@ export function OrderDetail() {
   const [history, setHistory] = useState<OrderStatusHistoryRow[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [companyName, setCompanyName] = useState("Srimalli Food Product");
+const [companyName, setCompanyName] = useState("Srimalli Food Product");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [shop, setShop] = useState<LatLng | null>(null);
 
   // edit form state
   const [editItems, setEditItems] = useState<DraftOrderItem[]>([]);
   const [notes, setNotes] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
-  const [locationUrl, setLocationUrl] = useState("");
+  const [customerMapLink, setCustomerMapLink] = useState("");
   const [grandTotalOverride, setGrandTotalOverride] = useState("");
+  const [partnerName, setPartnerName] = useState("");
+  const [partnerMobile, setPartnerMobile] = useState("");
+  const [partnerLocation, setPartnerLocation] = useState<LatLng | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -66,10 +72,17 @@ export function OrderDetail() {
         setItems(items);
         setHistory(history);
         setInvoices(invoices);
-        setNotes(order.notes ?? "");
+setNotes(order.notes ?? "");
         setExpectedDelivery(order.expected_delivery_date ?? "");
-        setLocationUrl(order.delivery_location_url ?? "");
+        // Older orders may only have the original delivery link. Use it as a
+        // fallback so that it remains editable and can populate coordinates.
+        setCustomerMapLink(order.customer_map_link ?? order.delivery_location_url ?? "");
         setGrandTotalOverride(String(order.grand_total ?? ""));
+        setPartnerName(order.delivery_partner_name ?? "");
+        setPartnerMobile(order.delivery_partner_mobile ?? "");
+        setPartnerLocation(order.delivery_partner_latitude != null && order.delivery_partner_longitude != null
+          ? { lat: order.delivery_partner_latitude, lng: order.delivery_partner_longitude }
+          : null);
         setEditItems(
           items.length
             ? items.map((i) => ({
@@ -86,9 +99,31 @@ export function OrderDetail() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
+  const useCurrentPartnerLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Location unavailable", description: "This browser does not support location sharing.", variant: "error" });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPartnerLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        toast({ title: "Partner location captured", variant: "success" });
+      },
+      () => toast({ title: "Location unavailable", description: "Allow location access and try again.", variant: "error" }),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 10_000 }
+    );
+  };
+
+useEffect(() => {
     load();
-    getSettings().then((s) => setCompanyName(s.company_name)).catch(() => {});
+    getSettings()
+      .then((s) => {
+        setCompanyName(s.company_name);
+        if (s.shop_latitude != null && s.shop_longitude != null) {
+          setShop({ lat: s.shop_latitude, lng: s.shop_longitude });
+        }
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -96,6 +131,14 @@ export function OrderDetail() {
     if (updatingStatus) return;
     setUpdatingStatus(true);
     try {
+      if (status === "out_for_delivery" && order) {
+        const settings = await getSettings();
+        await updateOrder(order.id, {
+          delivery_tracking_token: order.delivery_tracking_token ?? crypto.randomUUID(),
+          delivery_partner_name: order.delivery_partner_name ?? settings.delivery_partner_name ?? null,
+          delivery_partner_mobile: order.delivery_partner_mobile ?? settings.delivery_partner_mobile ?? null,
+        });
+      }
       await updateOrderStatus(id, status);
       toast({ title: `Marked as ${STATUS_LABEL[status]}`, variant: "success" });
       load();
@@ -103,6 +146,34 @@ export function OrderDetail() {
       toast({ title: "Couldn't update status", description: (e as Error).message, variant: "error" });
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const copyDriverLink = async () => {
+    if (!order) return;
+    try {
+      const token = order.delivery_tracking_token ?? crypto.randomUUID();
+      if (!order.delivery_tracking_token) {
+        await updateOrder(order.id, { delivery_tracking_token: token });
+        setOrder((current) => (current ? { ...current, delivery_tracking_token: token } : current));
+      }
+      const link = `${window.location.origin}${import.meta.env.BASE_URL}deliver/${token}`;
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = link;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        input.remove();
+        if (!copied) throw new Error("Copy was blocked by this browser.");
+      }
+      toast({ title: "Driver tracking link copied", description: "Send it to your delivery partner on WhatsApp.", variant: "success" });
+    } catch (error) {
+      toast({ title: "Couldn't copy driver link", description: (error as Error).message, variant: "error" });
     }
   };
 
@@ -133,10 +204,11 @@ export function OrderDetail() {
     }
   };
 
-  const handleSaveEdit = async () => {
+const handleSaveEdit = async () => {
     if (!order) return;
-    if (locationUrl.trim() && !isSafeExternalUrl(locationUrl)) {
-      toast({ title: "Invalid delivery link", description: "Use a valid link starting with https://.", variant: "error" });
+    const coords = parseCoordinates(customerMapLink);
+    if (customerMapLink.trim() && !coords && !isGoogleMapsLink(customerMapLink)) {
+      toast({ title: "Invalid map link", description: "We couldn't detect coordinates in that Google Maps link.", variant: "error" });
       return;
     }
     setSaving(true);
@@ -148,7 +220,15 @@ export function OrderDetail() {
       await updateOrder(order.id, {
         notes: notes.trim() || null,
         expected_delivery_date: expectedDelivery || null,
-        delivery_location_url: locationUrl.trim() || null,
+        delivery_location_url: customerMapLink.trim() || null,
+        customer_map_link: customerMapLink.trim() || null,
+        customer_latitude: coords?.lat ?? null,
+        customer_longitude: coords?.lng ?? null,
+        delivery_partner_name: partnerName.trim() || null,
+        delivery_partner_mobile: partnerMobile.trim() || null,
+        delivery_partner_latitude: partnerLocation?.lat ?? null,
+        delivery_partner_longitude: partnerLocation?.lng ?? null,
+        delivery_partner_location_updated_at: partnerLocation ? new Date().toISOString() : null,
         grand_total: finalTotal,
       });
 
@@ -253,6 +333,16 @@ export function OrderDetail() {
         </CardContent>
       </Card>
 
+      {order.status === "out_for_delivery" && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Driver live-location link</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">Send this to your single delivery partner. They open it on their phone and tap “Start sharing location”.</p>
+            <Button variant="outline" onClick={copyDriverLink}><Copy className="h-4 w-4" /> Copy driver link</Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Customer & Order Info</CardTitle>
@@ -301,7 +391,22 @@ export function OrderDetail() {
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Delivery Location / Google Maps Link</Label>
-                  <Input value={locationUrl} onChange={(e) => setLocationUrl(e.target.value)} placeholder="https://maps.google.com/..." />
+                  <MapLinkInput
+                    value={customerMapLink}
+                    onChange={(link) => setCustomerMapLink(link)}
+                    shop={shop}
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2 rounded-md border p-3">
+                  <div className="mb-2 flex items-center gap-2"><Navigation className="h-4 w-4 text-primary" /><Label>Delivery Partner (shown when Out for Delivery)</Label></div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Input value={partnerName} onChange={(e) => setPartnerName(e.target.value)} placeholder="Partner name" />
+                    <Input value={partnerMobile} onChange={(e) => setPartnerMobile(e.target.value)} placeholder="Partner mobile (optional)" inputMode="tel" />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={useCurrentPartnerLocation}>Use this device's current location</Button>
+                    <span className="text-xs text-muted-foreground">{partnerLocation ? `${partnerLocation.lat.toFixed(5)}, ${partnerLocation.lng.toFixed(5)}` : "No partner location shared yet"}</span>
+                  </div>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Notes</Label>

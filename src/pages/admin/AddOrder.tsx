@@ -10,8 +10,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { ItemsEditor, blankItem } from "@/components/orders/ItemsEditor";
 import { BillCapture } from "@/components/invoices/BillCapture";
+import { MapLinkInput } from "@/components/map/MapLinkInput";
 import { createOrder, invoiceNumberExists, computeGrandTotal } from "@/services/orders";
 import { uploadInvoiceFile, validateInvoiceFile } from "@/services/invoices";
+import { getSettings } from "@/services/settings";
+import type { LatLng } from "@/lib/map";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/hooks/useToast";
 import { formatCurrency } from "@/lib/utils";
@@ -33,6 +36,9 @@ function emptyDraft(): DraftOrder {
     status: "order_created",
     notes: "",
     deliveryLocationUrl: "",
+    customerMapLink: "",
+    customerLatitude: null,
+    customerLongitude: null,
     grandTotalOverride: "",
     items: [blankItem()],
   };
@@ -46,11 +52,22 @@ export function AddOrder() {
   const initialTab = params.get("mode") === "capture" ? "capture" : "manual";
   const [tab, setTab] = useState<"capture" | "manual">(initialTab);
   const [draft, setDraft] = useState<DraftOrder>(emptyDraft());
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState(false);
+  const [shop, setShop] = useState<LatLng | null>(null);
 
   const debouncedInvoiceNumber = useDebounce(draft.invoiceNumber, 500);
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        if (s.shop_latitude != null && s.shop_longitude != null) {
+          setShop({ lat: s.shop_latitude, lng: s.shop_longitude });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!debouncedInvoiceNumber.trim()) {
@@ -222,12 +239,21 @@ export function AddOrder() {
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Delivery Location / Maps Link">
-                    <Input
-                      value={draft.deliveryLocationUrl}
-                      onChange={(e) => patch({ deliveryLocationUrl: e.target.value })}
-                      placeholder="https://maps.google.com/..."
+<Field label="Delivery Location / Maps Link" className="sm:col-span-2">
+                    <MapLinkInput
+                      value={draft.customerMapLink}
+                      onChange={(link, coords) =>
+                        patch({
+                          customerMapLink: link,
+                          customerLatitude: coords?.lat ?? null,
+                          customerLongitude: coords?.lng ?? null,
+                        })
+                      }
+                      shop={shop}
                     />
+                    {!draft.customerLatitude && (
+                      <p className="text-xs text-muted-foreground">For the customer route map, paste a full Google Maps URL containing coordinates or paste latitude,longitude. Short maps.app.goo.gl links do not expose a map pin.</p>
+                    )}
                   </Field>
                   <Field label="Notes" className="sm:col-span-2">
                     <Textarea value={draft.notes} onChange={(e) => patch({ notes: e.target.value })} rows={2} />

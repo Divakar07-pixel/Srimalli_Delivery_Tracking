@@ -34,10 +34,19 @@ export interface Order {
   invoice_date: string | null;
   order_date: string;
   expected_delivery_date: string | null;
-  status: OrderStatus;
+status: OrderStatus;
   grand_total: number;
   notes: string | null;
   delivery_location_url: string | null;
+  customer_latitude: number | null;
+  customer_longitude: number | null;
+  customer_map_link: string | null;
+  delivery_partner_name: string | null;
+  delivery_partner_mobile: string | null;
+  delivery_partner_latitude: number | null;
+  delivery_partner_longitude: number | null;
+  delivery_partner_location_updated_at: string | null;
+  delivery_tracking_token: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +91,10 @@ export interface Settings {
   whatsapp_template_delivered: string | null;
   default_expected_delivery_text: string | null;
   theme: string;
+  shop_latitude: number | null;
+  shop_longitude: number | null;
+  delivery_partner_name: string | null;
+  delivery_partner_mobile: string | null;
   updated_at: string;
 }
 

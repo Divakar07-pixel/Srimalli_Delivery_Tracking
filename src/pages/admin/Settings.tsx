@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { getSettings, updateSettings, uploadLogo } from "@/services/settings";
 import { useToast } from "@/hooks/useToast";
+import { parseCoordinates } from "@/lib/map";
+import { ShopPreviewMap } from "@/components/map/ShopPreviewMap";
 import type { Settings as SettingsType } from "@/types/database";
 
 const DEFAULT_ARRIVED = `Hello {CustomerName},\n\nYour order (Invoice: {InvoiceNumber}) has arrived safely at our hub.\n\nOur delivery person will contact you regarding your location and delivery. Your order is expected to be delivered today or tomorrow.\n\nTrack your order here:\n{TrackingURL}\n\nThank you for choosing\n{CompanyName}.`;
@@ -18,6 +20,7 @@ export function AdminSettings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [shopMapLink, setShopMapLink] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -39,9 +42,13 @@ export function AdminSettings() {
         business_address: settings.business_address,
         whatsapp_template_arrived: settings.whatsapp_template_arrived,
         whatsapp_template_out_for_delivery: settings.whatsapp_template_out_for_delivery,
-        whatsapp_template_delivered: settings.whatsapp_template_delivered,
+whatsapp_template_delivered: settings.whatsapp_template_delivered,
         default_expected_delivery_text: settings.default_expected_delivery_text,
         theme: settings.theme,
+        shop_latitude: settings.shop_latitude,
+        shop_longitude: settings.shop_longitude,
+        delivery_partner_name: settings.delivery_partner_name,
+        delivery_partner_mobile: settings.delivery_partner_mobile,
       });
       toast({ title: "Settings saved", variant: "success" });
     } catch (e) {
@@ -131,6 +138,76 @@ export function AdminSettings() {
               placeholder="within 1-2 days of arrival at hub"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Shop Location (Srimalli Food Product)</CardTitle>
+          <CardDescription>
+            Set the shop's pin so the tracking page can show the route from your shop to the customer.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Shop Latitude</Label>
+              <Input
+                type="number"
+                step="any"
+                value={settings.shop_latitude ?? ""}
+                onChange={(e) => patch({ shop_latitude: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                placeholder="e.g. 12.9716"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Shop Longitude</Label>
+              <Input
+                type="number"
+                step="any"
+                value={settings.shop_longitude ?? ""}
+                onChange={(e) => patch({ shop_longitude: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                placeholder="e.g. 77.5946"
+              />
+            </div>
+          </div>
+          {settings.shop_latitude != null && settings.shop_longitude != null && (
+            <div className="overflow-hidden rounded-md border" style={{ height: 220 }}>
+              <ShopPreviewMap lat={settings.shop_latitude} lng={settings.shop_longitude} />
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Tip: Paste your Google Maps share link into the "Google Maps link" box below and click "Extract".
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input value={shopMapLink} onChange={(e) => setShopMapLink(e.target.value)} placeholder="Full Google Maps URL or latitude,longitude" />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const coords = parseCoordinates(shopMapLink);
+                if (coords) {
+                  patch({ shop_latitude: coords.lat, shop_longitude: coords.lng });
+                  toast({ title: "Shop coordinates extracted", variant: "success" });
+                } else {
+                  toast({ title: "Coordinates not found", description: "Use a full Maps URL with coordinates, or paste latitude,longitude. Short maps.app.goo.gl links hide coordinates.", variant: "error" });
+                }
+              }}
+            >
+              Extract Coordinates
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Single Delivery Partner</CardTitle>
+          <CardDescription>Saved once and assigned automatically to every delivery.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5"><Label>Partner Name</Label><Input value={settings.delivery_partner_name ?? ""} onChange={(e) => patch({ delivery_partner_name: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>Partner Mobile</Label><Input value={settings.delivery_partner_mobile ?? ""} onChange={(e) => patch({ delivery_partner_mobile: e.target.value })} inputMode="tel" /></div>
         </CardContent>
       </Card>
 

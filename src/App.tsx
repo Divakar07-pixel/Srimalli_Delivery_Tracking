@@ -11,6 +11,7 @@ import { AdminShell } from "@/components/layout/AdminShell";
 import { Landing } from "@/pages/public/Landing";
 import { Track } from "@/pages/public/Track";
 import { TrackDetail } from "@/pages/public/TrackDetail";
+import { DeliveryShare } from "@/pages/public/DeliveryShare";
 
 // Admin pages are code-split: only fetched once someone actually navigates
 // into /admin, keeping the public bundle small.
@@ -61,6 +62,7 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/track" element={<Track />} />
             <Route path="/track/:reference" element={<TrackDetail />} />
+            <Route path="/deliver/:token" element={<DeliveryShare />} />
 
             {/* Admin auth */}
             <Route

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, FileText, Download, Eye, MapPin } from "lucide-react";
+import { ArrowLeft, FileText, Download, Eye, MapPin, Navigation } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { OrderTimeline } from "@/components/tracking/OrderTimeline";
 import { StatusBadge } from "@/components/orders/StatusBadge";
-import { getOrderTracking } from "@/services/tracking";
+import { getDeliveryPartnerLocation, getOrderTracking, getPublicSettings, type DeliveryPartnerLocation, type PublicSettings } from "@/services/tracking";
+import { DeliveryRouteMap } from "@/components/map/DeliveryRouteMap";
 import { getPublicInvoiceUrl } from "@/services/invoices";
 import { formatCurrency, formatDate, isSafeExternalUrl } from "@/lib/utils";
 import type { OrderTrackingDetail } from "@/types/order";
@@ -16,18 +17,38 @@ export function TrackDetail() {
   const { reference = "" } = useParams();
   const [order, setOrder] = useState<OrderTrackingDetail | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [partner, setPartner] = useState<DeliveryPartnerLocation | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     setOrder(undefined);
     setError(null);
     getOrderTracking(reference)
-      .then(setOrder)
+      .then((detail) => {
+        setOrder(detail);
+        if (detail?.status === "out_for_delivery") {
+          return getDeliveryPartnerLocation(reference).then(setPartner);
+        }
+        setPartner(null);
+        return undefined;
+      })
       .catch((err) => {
         setError((err as Error).message);
         setOrder(null);
       });
   }, [reference]);
+
+  useEffect(() => {
+    getPublicSettings().then(setSettings);
+  }, []);
+
+  useEffect(() => {
+    if (order?.status !== "out_for_delivery") return;
+    const refresh = () => getDeliveryPartnerLocation(reference).then(setPartner).catch(() => {});
+    const interval = window.setInterval(refresh, 20_000);
+    return () => window.clearInterval(interval);
+  }, [order?.status, reference]);
 
   const openInvoice = async (mode: "view" | "download") => {
     try {
@@ -65,6 +86,16 @@ export function TrackDetail() {
     );
   }
 
+  const shop = settings?.shop_latitude != null && settings.shop_longitude != null
+    ? { lat: settings.shop_latitude, lng: settings.shop_longitude }
+    : null;
+  const customer = order.customer_latitude != null && order.customer_longitude != null
+    ? { lat: order.customer_latitude, lng: order.customer_longitude }
+    : null;
+  const driver = partner?.latitude != null && partner.longitude != null
+    ? { lat: partner.latitude, lng: partner.longitude }
+    : null;
+
   return (
     <div className="min-h-screen bg-background pb-16">
       <div className="mx-auto max-w-2xl px-4 py-8">
@@ -87,6 +118,35 @@ export function TrackDetail() {
           </CardHeader>
           <CardContent>
             <OrderTimeline currentStatus={order.status} history={order.timeline} />
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Shop to your home</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+        {shop && customer ? (
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Delivery route</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <DeliveryRouteMap shop={shop} customer={customer} driver={driver} height={320} />
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <span>🏪 From: Srimalli Food Product</span>
+                <span>🏠 To: your delivery address</span>
+              </div>
+              {order.status === "out_for_delivery" && (
+                <p className="text-sm text-muted-foreground">
+                  {driver ? `🛵 ${partner?.name || "Your delivery partner"} is on the way. Location refreshes automatically.` : "Your order is out for delivery. The partner location will appear once it is shared."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <p className="text-sm text-muted-foreground">The route will appear after the shop and delivery-home coordinates are saved for this order.</p>
+        )}
           </CardContent>
         </Card>
 

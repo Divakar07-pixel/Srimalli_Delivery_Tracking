@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { generateTrackingId, isSafeExternalUrl, normalizeMobile } from "@/lib/utils";
+import { isGoogleMapsLink, parseCoordinates } from "@/lib/map";
 import type { DraftOrder } from "@/types/order";
 import type { Order, OrderItem, OrderStatus } from "@/types/database";
 
@@ -16,6 +17,21 @@ export interface OrderListRow extends Order {
 }
 
 const FRIENDLY_ERROR = "Unable to save order. Please check the information and try again.";
+
+type DatabaseError = { code?: string; message?: string } | null;
+
+function getSaveErrorMessage(error: DatabaseError): string {
+  if (error?.code === "23505") {
+    return "This invoice number already exists. Please use a unique invoice number.";
+  }
+  if (error?.code === "42501") {
+    return "Your account does not have permission to save orders. Please sign in as an administrator.";
+  }
+  if (error?.code === "PGRST204") {
+    return "The database schema is out of date. Apply the latest database migration and try again.";
+  }
+  return error?.message || FRIENDLY_ERROR;
+}
 
 export async function listOrders(filters: OrderListFilters = {}) {
   const { status = "all", search = "", dateRange = "all", page = 1, pageSize = 20 } = filters;
@@ -128,6 +144,11 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
     throw new Error("Please enter a valid Google Maps or website link starting with https://.");
   }
 
+  const coords = parseCoordinates(draft.customerMapLink);
+  if (draft.customerMapLink.trim() && !coords && !isGoogleMapsLink(draft.customerMapLink)) {
+    throw new Error("We couldn't detect coordinates in that map link. Please use a Google Maps share/pin link.");
+  }
+
   const duplicate = await invoiceNumberExists(draft.invoiceNumber);
   if (duplicate) {
     throw new Error(`Invoice number "${draft.invoiceNumber}" already exists. Please check before saving.`);
@@ -148,7 +169,7 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
       .insert({ name: draft.customerName.trim(), mobile, address: draft.address.trim() || null })
       .select("id")
       .single();
-    if (customerError || !newCustomer) throw new Error(FRIENDLY_ERROR);
+    if (customerError || !newCustomer) throw new Error(getSaveErrorMessage(customerError));
     customerId = newCustomer.id;
   } else {
     await supabase
@@ -171,7 +192,11 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
       status: draft.status,
       grand_total: grandTotal,
       notes: draft.notes.trim() || null,
-      delivery_location_url: draft.deliveryLocationUrl.trim() || null,
+      delivery_location_url: draft.customerMapLink.trim() || null,
+      customer_latitude: coords?.lat ?? null,
+      customer_longitude: coords?.lng ?? null,
+      customer_map_link: draft.customerMapLink.trim() || null,
+      delivery_tracking_token: crypto.randomUUID(),
     })
     .select("*")
     .single();
@@ -180,7 +205,7 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
     if (orderError?.code === "23505") {
       throw new Error(`Invoice number "${draft.invoiceNumber.trim()}" already exists. Please use a unique invoice number.`);
     }
-    throw new Error(FRIENDLY_ERROR);
+    throw new Error(getSaveErrorMessage(orderError));
   }
 
   const itemRows = draft.items
@@ -196,7 +221,7 @@ export async function createOrder(draft: DraftOrder): Promise<Order> {
 
   if (itemRows.length > 0) {
     const { error: itemsError } = await supabase.from("order_items").insert(itemRows);
-    if (itemsError) throw new Error("Order was created, but items could not be saved. Please edit the order to add them.");
+    if (itemsError) throw new Error(`Order was created, but items could not be saved: ${getSaveErrorMessage(itemsError)}`);
   }
 
   return order as Order;
@@ -219,7 +244,7 @@ export async function deleteOrder(orderId: string) {
 
 export async function replaceOrderItems(orderId: string, items: OrderItem[]) {
   const { error: deleteError } = await supabase.from("order_items").delete().eq("order_id", orderId);
-  if (deleteError) throw new Error(FRIENDLY_ERROR);
+  if (deleteError) throw new Error(getSaveErrorMessage(deleteError));
 
   if (items.length === 0) return;
 
@@ -232,7 +257,7 @@ export async function replaceOrderItems(orderId: string, items: OrderItem[]) {
     total: i.total,
   }));
   const { error: insertError } = await supabase.from("order_items").insert(rows);
-  if (insertError) throw new Error(FRIENDLY_ERROR);
+  if (insertError) throw new Error(getSaveErrorMessage(insertError));
 }
 
 export interface DashboardCounts {

@@ -26,6 +26,9 @@ export interface OrderTrackingDetail {
   customer_name: string;
   masked_mobile: string;
   delivery_location_url?: string | null;
+  customer_latitude?: number | null;
+  customer_longitude?: number | null;
+  customer_map_link?: string | null;
   items: TrackingItem[];
   timeline: TrackingTimelineEntry[];
   has_invoice: boolean;
@@ -61,6 +64,9 @@ export interface DraftOrder {
   status: OrderStatus;
   notes: string;
   deliveryLocationUrl: string;
+  customerMapLink: string;
+  customerLatitude?: number | null;
+  customerLongitude?: number | null;
   grandTotalOverride: string; // empty = use computed sum
   items: DraftOrderItem[];
 }
