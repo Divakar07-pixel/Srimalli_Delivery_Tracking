@@ -34,15 +34,20 @@ export function DeliveryShare() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const body = document.body;
+    const previousDark = root.classList.contains("dark");
+    const previousColorScheme = root.style.colorScheme;
+
+    // Tailwind's darkMode is class-based. The class must live on <html>, not
+    // on the driver page container, so all shadcn CSS variables switch too.
     root.classList.toggle("dark", theme === "dark");
-    body.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
     try { localStorage.setItem("delivery-driver-theme", theme); } catch { /* localStorage may be unavailable */ }
+
+    // Restore the document's previous theme when leaving the driver route so
+    // this page cannot change the theme of the customer/admin routes.
     return () => {
-      root.classList.remove("dark");
-      body.classList.remove("dark");
-      root.style.colorScheme = "";
+      root.classList.toggle("dark", previousDark);
+      root.style.colorScheme = previousColorScheme;
     };
   }, [theme]);
 
