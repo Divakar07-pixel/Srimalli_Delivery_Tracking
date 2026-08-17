@@ -132,7 +132,10 @@ export function DeliveryShare() {
 
     window.addEventListener("pageshow", recoverGps);
     document.addEventListener("visibilitychange", handleVisibility);
-    const interval = window.setInterval(recoverGps, 30_000);
+    // Keep the existing watchPosition as the primary GPS source. This periodic
+    // getCurrentPosition call is only a recovery/heartbeat for browsers that
+    // temporarily stop delivering watchPosition callbacks, especially on iOS.
+    const interval = window.setInterval(recoverGps, 10_000);
     recoverGps();
 
     return () => {
@@ -158,7 +161,6 @@ export function DeliveryShare() {
       setAssignment(started);
       await requestWakeLock();
       // Force the first GPS coordinate after every Start Tracking to be sent immediately.
-      // This prevents the existing 15-second throttle from hiding the fresh restart location.
       lastSentAt.current = 0;
       lastPositionAt.current = 0;
       startGpsWatch();
