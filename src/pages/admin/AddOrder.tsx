@@ -11,7 +11,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { ItemsEditor, blankItem } from "@/components/orders/ItemsEditor";
 import { BillCapture } from "@/components/invoices/BillCapture";
 import { MapLinkInput } from "@/components/map/MapLinkInput";
-import { createOrder, invoiceNumberExists, computeGrandTotal } from "@/services/orders";
+import { createOrder, invoiceNumberExists, computeGrandTotal, getExistingCustomerOrderDefaults } from "@/services/orders";
 import { uploadInvoiceFile, validateInvoiceFile } from "@/services/invoices";
 import { getSettings } from "@/services/settings";
 import type { LatLng } from "@/lib/map";
@@ -48,25 +48,23 @@ export function AddOrder() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-
   const initialTab = params.get("mode") === "capture" ? "capture" : "manual";
   const [tab, setTab] = useState<"capture" | "manual">(initialTab);
   const [draft, setDraft] = useState<DraftOrder>(emptyDraft());
-const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState(false);
   const [shop, setShop] = useState<LatLng | null>(null);
-
+  const [existingCustomerFound, setExistingCustomerFound] = useState(false);
+  const [loadingCustomerDefaults, setLoadingCustomerDefaults] = useState(false);
   const debouncedInvoiceNumber = useDebounce(draft.invoiceNumber, 500);
 
+  const patch = (fields: Partial<DraftOrder>) => setDraft((d) => ({ ...d, ...fields }));
+
   useEffect(() => {
-    getSettings()
-      .then((s) => {
-        if (s.shop_latitude != null && s.shop_longitude != null) {
-          setShop({ lat: s.shop_latitude, lng: s.shop_longitude });
-        }
-      })
-      .catch(() => {});
+    getSettings().then((s) => {
+      if (s.shop_latitude != null && s.shop_longitude != null) setShop({ lat: s.shop_latitude, lng: s.shop_longitude });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -77,7 +75,45 @@ const [pendingFile, setPendingFile] = useState<File | null>(null);
     invoiceNumberExists(debouncedInvoiceNumber).then(setDuplicateWarning);
   }, [debouncedInvoiceNumber]);
 
-  const patch = (fields: Partial<DraftOrder>) => setDraft((d) => ({ ...d, ...fields }));
+  // Repeat customer shortcut: reuse saved billing/customer information and the latest delivery-home location.
+  useEffect(() => {
+    let cancelled = false;
+    const normalizedLength = draft.mobile.replace(/\D/g, "").length;
+    if (normalizedLength < 10) {
+      setExistingCustomerFound(false);
+      return;
+    }
+
+    setLoadingCustomerDefaults(true);
+    getExistingCustomerOrderDefaults(draft.mobile)
+      .then((defaults) => {
+        if (cancelled) return;
+        if (!defaults) {
+          setExistingCustomerFound(false);
+          return;
+        }
+        const previous = defaults.previousOrder;
+        const previousMap = previous?.customer_map_link || previous?.delivery_location_url || "";
+        setExistingCustomerFound(true);
+        patch({
+          customerName: defaults.customer.name,
+          address: defaults.customer.address || "",
+          customerMapLink: draft.customerMapLink || previousMap,
+          customerLatitude: draft.customerLatitude ?? previous?.customer_latitude ?? null,
+          customerLongitude: draft.customerLongitude ?? previous?.customer_longitude ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setExistingCustomerFound(false);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCustomerDefaults(false);
+      });
+
+    return () => { cancelled = true; };
+    // Only react to the mobile field; the other fields remain editable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.mobile]);
 
   const handleOcrProceed = (file: File | null, data: ExtractedBillData | null) => {
     if (file) setPendingFile(file);
@@ -89,16 +125,7 @@ const [pendingFile, setPendingFile] = useState<File | null>(null);
         invoiceNumber: data.invoiceNumber || draft.invoiceNumber,
         invoiceDate: data.invoiceDate || draft.invoiceDate,
         grandTotalOverride: data.grandTotal || draft.grandTotalOverride,
-        items:
-          data.items && data.items.length > 0
-            ? data.items.map((i) => ({
-                id: crypto.randomUUID(),
-                product_name: i.productName || "",
-                quantity: i.quantity || "1",
-                unit: i.unit || "pcs",
-                price: i.price || "",
-              }))
-            : draft.items,
+        items: data.items && data.items.length > 0 ? data.items.map((i) => ({ id: crypto.randomUUID(), product_name: i.productName || "", quantity: i.quantity || "1", unit: i.unit || "pcs", price: i.price || "" })) : draft.items,
       });
     }
     setTab("manual");
@@ -124,11 +151,7 @@ const [pendingFile, setPendingFile] = useState<File | null>(null);
         try {
           await uploadInvoiceFile(order.id, pendingFile);
         } catch (uploadErr) {
-          toast({
-            title: "Order saved, but bill upload failed",
-            description: (uploadErr as Error).message,
-            variant: "error",
-          });
+          toast({ title: "Order saved, but bill upload failed", description: (uploadErr as Error).message, variant: "error" });
         }
       }
       toast({ title: "Order created", variant: "success" });
@@ -144,159 +167,46 @@ const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-16">
-      <Link to="/admin" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" />
-        Back to dashboard
-      </Link>
-
-      <div>
-        <h1 className="text-2xl font-semibold">Add Order</h1>
-        <p className="text-sm text-muted-foreground">Capture a bill or enter details manually — both always work.</p>
-      </div>
+      <Link to="/admin" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back to dashboard</Link>
+      <div><h1 className="text-2xl font-semibold">Add Order</h1><p className="text-sm text-muted-foreground">Capture a bill or enter details manually — both always work.</p></div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "capture" | "manual")}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="capture">Capture / Upload Bill</TabsTrigger>
-          <TabsTrigger value="manual">Enter Manually</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="capture">
-          <BillCapture onProceed={handleOcrProceed} />
-        </TabsContent>
-
+        <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="capture">Capture / Upload Bill</TabsTrigger><TabsTrigger value="manual">Enter Manually</TabsTrigger></TabsList>
+        <TabsContent value="capture"><BillCapture onProceed={handleOcrProceed} /></TabsContent>
         <TabsContent value="manual">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {pendingFile && (
-              <div className="flex items-center gap-2 rounded-md border bg-accent px-3 py-2 text-sm text-accent-foreground">
-                <Paperclip className="h-4 w-4" />
-                Bill attached: {pendingFile.name}
-                <button type="button" className="ml-auto text-xs underline" onClick={() => setPendingFile(null)}>
-                  Remove
-                </button>
+            {pendingFile && <div className="flex items-center gap-2 rounded-md border bg-accent px-3 py-2 text-sm text-accent-foreground"><Paperclip className="h-4 w-4" /> Bill attached: {pendingFile.name}<button type="button" className="ml-auto text-xs underline" onClick={() => setPendingFile(null)}>Remove</button></div>}
+
+            <Card><CardContent className="space-y-4 pt-5">
+              <div className="flex items-center justify-between gap-3"><p className="font-medium">Billing &amp; Delivery Customer</p>{loadingCustomerDefaults && <span className="text-xs text-muted-foreground">Checking previous orders…</span>}</div>
+              {existingCustomerFound && <div className="rounded-md border bg-accent/50 px-3 py-2 text-xs text-muted-foreground">Existing customer found. Name, billing address, and the last saved delivery location have been filled automatically. For a repeat order, you only need to change the product and invoice number unless the customer has moved.</div>}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Customer Name" required><Input value={draft.customerName} onChange={(e) => patch({ customerName: e.target.value })} required /></Field>
+                <Field label="Mobile Number" required><Input value={draft.mobile} onChange={(e) => patch({ mobile: e.target.value })} inputMode="numeric" required /></Field>
+                <Field label="Billing / Customer Address" className="sm:col-span-2"><Textarea value={draft.address} onChange={(e) => patch({ address: e.target.value })} rows={2} /></Field>
               </div>
-            )}
+            </CardContent></Card>
 
-            <Card>
-              <CardContent className="space-y-4 pt-5">
-                <p className="font-medium">Customer</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Customer Name" required>
-                    <Input value={draft.customerName} onChange={(e) => patch({ customerName: e.target.value })} required />
-                  </Field>
-                  <Field label="Mobile Number" required>
-                    <Input
-                      value={draft.mobile}
-                      onChange={(e) => patch({ mobile: e.target.value })}
-                      inputMode="numeric"
-                      required
-                    />
-                  </Field>
-                  <Field label="Address" className="sm:col-span-2">
-                    <Textarea value={draft.address} onChange={(e) => patch({ address: e.target.value })} rows={2} />
-                  </Field>
-                </div>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="space-y-4 pt-5">
+              <p className="font-medium">Order</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Invoice Number" required><Input value={draft.invoiceNumber} onChange={(e) => patch({ invoiceNumber: e.target.value })} required />{duplicateWarning && <p className="mt-1 flex items-center gap-1 text-xs text-warning"><AlertTriangle className="h-3.5 w-3.5" /> This invoice number already exists.</p>}</Field>
+                <Field label="Invoice Date"><Input type="date" value={draft.invoiceDate} onChange={(e) => patch({ invoiceDate: e.target.value })} /></Field>
+                <Field label="Order Date"><Input type="date" value={draft.orderDate} onChange={(e) => patch({ orderDate: e.target.value })} /></Field>
+                <Field label="Expected Delivery Date"><Input type="date" value={draft.expectedDeliveryDate} onChange={(e) => patch({ expectedDeliveryDate: e.target.value })} /></Field>
+                <Field label="Current Status"><Select value={draft.status} onValueChange={(v) => patch({ status: v as DraftOrder["status"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ACTIVE_STATUS_FLOW.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}<SelectItem value="cancelled">{STATUS_LABEL.cancelled}</SelectItem></SelectContent></Select></Field>
+                <Field label="Delivery Location / Maps Link" className="sm:col-span-2">
+                  <MapLinkInput value={draft.customerMapLink} onChange={(link, coords) => patch({ customerMapLink: link, customerLatitude: coords?.lat ?? null, customerLongitude: coords?.lng ?? null })} shop={shop} />
+                  {!draft.customerLatitude && <p className="text-xs text-muted-foreground">For the customer route map, paste a full Google Maps URL containing coordinates or paste latitude,longitude. Short maps.app.goo.gl links do not expose a map pin.</p>}
+                </Field>
+                <Field label="Notes" className="sm:col-span-2"><Textarea value={draft.notes} onChange={(e) => patch({ notes: e.target.value })} rows={2} /></Field>
+              </div>
+              {!pendingFile && <div><Label className="mb-1.5 block text-sm">Attach Bill (optional)</Label><Input type="file" accept="image/*,application/pdf" onChange={(e) => handleManualFileAttach(e.target.files?.[0] ?? null)} /><p className="mt-1 text-xs text-muted-foreground">Stored as supporting documentation — not scanned.</p></div>}
+            </CardContent></Card>
 
-            <Card>
-              <CardContent className="space-y-4 pt-5">
-                <p className="font-medium">Order</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Invoice Number" required>
-                    <Input value={draft.invoiceNumber} onChange={(e) => patch({ invoiceNumber: e.target.value })} required />
-                    {duplicateWarning && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-warning">
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        This invoice number already exists.
-                      </p>
-                    )}
-                  </Field>
-                  <Field label="Invoice Date">
-                    <Input type="date" value={draft.invoiceDate} onChange={(e) => patch({ invoiceDate: e.target.value })} />
-                  </Field>
-                  <Field label="Order Date">
-                    <Input type="date" value={draft.orderDate} onChange={(e) => patch({ orderDate: e.target.value })} />
-                  </Field>
-                  <Field label="Expected Delivery Date">
-                    <Input
-                      type="date"
-                      value={draft.expectedDeliveryDate}
-                      onChange={(e) => patch({ expectedDeliveryDate: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Current Status">
-                    <Select value={draft.status} onValueChange={(v) => patch({ status: v as DraftOrder["status"] })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ACTIVE_STATUS_FLOW.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {STATUS_LABEL[s]}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="cancelled">{STATUS_LABEL.cancelled}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-<Field label="Delivery Location / Maps Link" className="sm:col-span-2">
-                    <MapLinkInput
-                      value={draft.customerMapLink}
-                      onChange={(link, coords) =>
-                        patch({
-                          customerMapLink: link,
-                          customerLatitude: coords?.lat ?? null,
-                          customerLongitude: coords?.lng ?? null,
-                        })
-                      }
-                      shop={shop}
-                    />
-                    {!draft.customerLatitude && (
-                      <p className="text-xs text-muted-foreground">For the customer route map, paste a full Google Maps URL containing coordinates or paste latitude,longitude. Short maps.app.goo.gl links do not expose a map pin.</p>
-                    )}
-                  </Field>
-                  <Field label="Notes" className="sm:col-span-2">
-                    <Textarea value={draft.notes} onChange={(e) => patch({ notes: e.target.value })} rows={2} />
-                  </Field>
-                </div>
-
-                {!pendingFile && (
-                  <div>
-                    <Label className="mb-1.5 block text-sm">Attach Bill (optional)</Label>
-                    <Input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      onChange={(e) => handleManualFileAttach(e.target.files?.[0] ?? null)}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">Stored as supporting documentation — not scanned.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="space-y-3 pt-5">
-                <p className="font-medium">Products</p>
-                <ItemsEditor items={draft.items} onChange={(items) => patch({ items })} />
-                <div>
-                  <Label className="text-sm">Override Grand Total (optional)</Label>
-                  <Input
-                    value={draft.grandTotalOverride}
-                    onChange={(e) => patch({ grandTotalOverride: e.target.value })}
-                    placeholder={`Computed: ${formatCurrency(grandTotal)}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="flex items-center justify-between rounded-lg border bg-card p-4">
-              <span className="font-medium">Grand Total</span>
-              <span className="text-lg font-bold">{formatCurrency(grandTotal)}</span>
-            </div>
-
-            <Button type="submit" size="lg" className="w-full" loading={saving} disabled={saving}>
-              Save Order
-            </Button>
+            <Card><CardContent className="space-y-3 pt-5"><p className="font-medium">Products</p><ItemsEditor items={draft.items} onChange={(items) => patch({ items })} /><div><Label className="text-sm">Override Grand Total (optional)</Label><Input value={draft.grandTotalOverride} onChange={(e) => patch({ grandTotalOverride: e.target.value })} placeholder={`Computed: ${formatCurrency(grandTotal)}`} /></div></CardContent></Card>
+            <div className="flex items-center justify-between rounded-lg border bg-card p-4"><span className="font-medium">Grand Total</span><span className="text-lg font-bold">{formatCurrency(grandTotal)}</span></div>
+            <Button type="submit" size="lg" className="w-full" loading={saving} disabled={saving}>Save Order</Button>
           </form>
         </TabsContent>
       </Tabs>
@@ -304,23 +214,6 @@ const [pendingFile, setPendingFile] = useState<File | null>(null);
   );
 }
 
-function Field({
-  label,
-  required,
-  className,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <Label className="mb-1.5 block text-sm">
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
-      {children}
-    </div>
-  );
+function Field({ label, required, className, children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
+  return <div className={className}><Label className="mb-1.5 block text-sm">{label} {required && <span className="text-destructive">*</span>}</Label>{children}</div>;
 }
