@@ -15,6 +15,8 @@ const timelineSteps = [
   { key: "delivered", label: "Delivered" },
 ] as const;
 
+const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 };
+
 export function DeliveryShare() {
   const { token = "" } = useParams();
   const [assignment, setAssignment] = useState<DeliveryAssignment | null | undefined>(undefined);
@@ -29,6 +31,7 @@ export function DeliveryShare() {
   const [showCompletedPrompt, setShowCompletedPrompt] = useState(false);
   const watchId = useRef<number | null>(null);
   const lastSentAt = useRef(0);
+  const lastPositionAt = useRef(0);
   const latestPosition = useRef<GeolocationPosition | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
 
@@ -36,15 +39,9 @@ export function DeliveryShare() {
     const root = document.documentElement;
     const previousDark = root.classList.contains("dark");
     const previousColorScheme = root.style.colorScheme;
-
-    // Tailwind's darkMode is class-based. The class must live on <html>, not
-    // on the driver page container, so all shadcn CSS variables switch too.
     root.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
     try { localStorage.setItem("delivery-driver-theme", theme); } catch { /* localStorage may be unavailable */ }
-
-    // Restore the document's previous theme when leaving the driver route so
-    // this page cannot change the theme of the customer/admin routes.
     return () => {
       root.classList.toggle("dark", previousDark);
       root.style.colorScheme = previousColorScheme;
@@ -76,6 +73,7 @@ export function DeliveryShare() {
 
   const sendPosition = async (position: GeolocationPosition) => {
     latestPosition.current = position;
+    lastPositionAt.current = Date.now();
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
     const now = Date.now();
@@ -92,6 +90,60 @@ export function DeliveryShare() {
     }
   };
 
+  const startGpsWatch = () => {
+    if (!navigator.geolocation) return;
+    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+    watchId.current = navigator.geolocation.watchPosition(
+      (position) => void sendPosition(position),
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setState("error");
+          setMessage("Location access is required to share your live delivery location.");
+        } else if (error.code === error.TIMEOUT) {
+          setMessage("GPS took too long to respond. Reconnecting GPS…");
+        } else {
+          setMessage("GPS is temporarily unavailable. Reconnecting GPS…");
+        }
+      },
+      gpsOptions
+    );
+  };
+
+  useEffect(() => {
+    if (state !== "sharing") return;
+
+    const recoverGps = () => {
+      if (!navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => void sendPosition(position),
+        () => {
+          if (Date.now() - lastPositionAt.current > 45_000) startGpsWatch();
+        },
+        gpsOptions
+      );
+
+      if (Date.now() - lastPositionAt.current > 45_000) startGpsWatch();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") recoverGps();
+    };
+
+    window.addEventListener("pageshow", recoverGps);
+    document.addEventListener("visibilitychange", handleVisibility);
+    const interval = window.setInterval(recoverGps, 30_000);
+    recoverGps();
+
+    return () => {
+      window.removeEventListener("pageshow", recoverGps);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.clearInterval(interval);
+    };
+    // The existing GPS callbacks are intentionally reused; this effect only recovers the existing watch when it becomes stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   const startSharing = async () => {
     if (!navigator.geolocation) {
       setState("error");
@@ -105,16 +157,8 @@ export function DeliveryShare() {
       if (!started) throw new Error("This delivery link is no longer active.");
       setAssignment(started);
       await requestWakeLock();
-      watchId.current = navigator.geolocation.watchPosition(
-        (position) => void sendPosition(position),
-        (error) => {
-          setState("error");
-          if (error.code === error.PERMISSION_DENIED) setMessage("Location access is required to share your live delivery location.");
-          else if (error.code === error.TIMEOUT) setMessage("GPS took too long to respond. Keep trying or move to an area with a clearer signal.");
-          else setMessage("GPS is temporarily unavailable. Please try again.");
-        },
-        { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 }
-      );
+      lastPositionAt.current = 0;
+      startGpsWatch();
       setState("sharing");
       setMessage("GPS connected. Location is sharing.");
     } catch (error) {
