@@ -23,6 +23,17 @@ import { useToast } from "@/hooks/useToast";
 import type { Order, OrderItem, OrderStatusHistoryRow, Invoice, Customer } from "@/types/database";
 import type { DraftOrderItem } from "@/types/order";
 
+function extractDeliveryCharge(notes: string | null | undefined) {
+  const match = (notes ?? "").match(/\[\[delivery_charge=([0-9]+(?:\.[0-9]+)?)\]\]/);
+  return match?.[1] ?? "";
+}
+
+function withDeliveryCharge(notes: string, charge: string) {
+  const cleanNotes = notes.replace(/\[\[delivery_charge=[^\]]*\]\]\n?/g, "").trim();
+  const amount = parseFloat(charge || "0");
+  return Number.isFinite(amount) && amount > 0 ? `[[delivery_charge=${Math.round(amount * 100) / 100}]]${cleanNotes ? `\n${cleanNotes}` : ""}` : cleanNotes;
+}
+
 export function OrderDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -37,12 +48,14 @@ export function OrderDetail() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<Order["status"] | null>(null);
   const [shop, setShop] = useState<LatLng | null>(null);
   const [editItems, setEditItems] = useState<DraftOrderItem[]>([]);
   const [notes, setNotes] = useState("");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [customerMapLink, setCustomerMapLink] = useState("");
   const [grandTotalOverride, setGrandTotalOverride] = useState("");
+  const [deliveryCharges, setDeliveryCharges] = useState("");
   const [partnerName, setPartnerName] = useState("");
   const [partnerMobile, setPartnerMobile] = useState("");
   const [partnerLocation, setPartnerLocation] = useState<LatLng | null>(null);
@@ -59,6 +72,7 @@ export function OrderDetail() {
         setExpectedDelivery(order.expected_delivery_date ?? "");
         setCustomerMapLink(order.customer_map_link ?? order.delivery_location_url ?? "");
         setGrandTotalOverride(String(order.grand_total ?? ""));
+        setDeliveryCharges(extractDeliveryCharge(order.notes));
         setPartnerName(order.delivery_partner_name ?? "");
         setPartnerMobile(order.delivery_partner_mobile ?? "");
         setPartnerLocation(order.delivery_partner_latitude != null && order.delivery_partner_longitude != null ? { lat: order.delivery_partner_latitude, lng: order.delivery_partner_longitude } : null);
@@ -118,7 +132,7 @@ export function OrderDetail() {
     } catch (error) { toast({ title: "Couldn't open driver GPS", description: (error as Error).message, variant: "error" }); }
   };
 
-  const handleStatusUpdate = async (status: Order["status"]) => {
+  const performStatusUpdate = async (status: Order["status"]) => {
     if (updatingStatus) return;
     setUpdatingStatus(true);
     try {
@@ -131,11 +145,14 @@ export function OrderDetail() {
         });
       }
       await updateOrderStatus(id, status);
+      setPendingStatus(null);
       toast({ title: `Marked as ${STATUS_LABEL[status]}`, variant: "success" });
       load();
     } catch (e) { toast({ title: "Couldn't update status", description: (e as Error).message, variant: "error" }); }
     finally { setUpdatingStatus(false); }
   };
+
+  const handleStatusRequest = (status: Order["status"]) => setPendingStatus(status);
 
   const handleViewInvoice = async (mode: "view" | "download") => {
     if (!invoices[0]) return;
@@ -158,10 +175,15 @@ export function OrderDetail() {
     setSaving(true);
     try {
       const validItems = editItems.filter((i) => i.product_name.trim());
-      const computedTotal = validItems.reduce((sum, i) => sum + computeItemTotal(i.quantity, i.price), 0);
-      const finalTotal = grandTotalOverride.trim() ? parseFloat(grandTotalOverride) || computedTotal : computedTotal;
+      const computedTotal = Math.round(validItems.reduce((sum, i) => sum + computeItemTotal(i.quantity, i.price), 0) * 100) / 100;
+      const charge = parseFloat(deliveryCharges || "0");
+      const safeCharge = Number.isFinite(charge) && charge > 0 ? Math.round(charge * 100) / 100 : 0;
+      const calculatedTotal = Math.round((computedTotal + safeCharge) * 100) / 100;
+      const override = parseFloat(grandTotalOverride);
+      const hasOverride = grandTotalOverride.trim() !== "" && Number.isFinite(override);
+      const finalTotal = hasOverride ? override : calculatedTotal;
       await updateOrder(order.id, {
-        notes: notes.trim() || null,
+        notes: withDeliveryCharge(notes, deliveryCharges),
         expected_delivery_date: expectedDelivery || null,
         delivery_location_url: customerMapLink.trim() || null,
         customer_map_link: customerMapLink.trim() || null,
@@ -184,6 +206,7 @@ export function OrderDetail() {
 
   const currentIndex = ACTIVE_STATUS_FLOW.indexOf(order.status);
   const nextStatus = order.status !== "cancelled" && currentIndex >= 0 && currentIndex < ACTIVE_STATUS_FLOW.length - 1 ? ACTIVE_STATUS_FLOW[currentIndex + 1] : null;
+  const previousStatus = order.status === "delivered" ? "out_for_delivery" : order.status === "out_for_delivery" ? "arrived_at_hub" : null;
 
   return (
     <div className="space-y-5 pb-10">
@@ -192,8 +215,9 @@ export function OrderDetail() {
 
       <div className="flex flex-wrap gap-2">
         {order.customer?.mobile && <><Button asChild variant="outline"><a href={buildCallLink(order.customer.mobile)}><Phone className="h-4 w-4" />Call Customer</a></Button><WhatsAppPanel mobile={order.customer.mobile} customerName={order.customer.name} invoiceNumber={order.invoice_number} trackingId={order.tracking_id} status={order.status} companyName={companyName} /></>}
-        {nextStatus && <Button onClick={() => handleStatusUpdate(nextStatus)} loading={updatingStatus} disabled={updatingStatus}>Mark {STATUS_LABEL[nextStatus]}</Button>}
-        {order.status !== "cancelled" && order.status !== "delivered" && <Button variant="destructive" onClick={() => handleStatusUpdate("cancelled")} disabled={updatingStatus}>Cancel Order</Button>}
+        {previousStatus && <Button variant="outline" onClick={() => handleStatusRequest(previousStatus)} disabled={updatingStatus}><ArrowLeft className="h-4 w-4" />Back to {STATUS_LABEL[previousStatus]}</Button>}
+        {nextStatus && <Button onClick={() => handleStatusRequest(nextStatus)} loading={updatingStatus} disabled={updatingStatus}>Mark {STATUS_LABEL[nextStatus]}</Button>}
+        {order.status !== "cancelled" && order.status !== "delivered" && <Button variant="destructive" onClick={() => handleStatusRequest("cancelled")} disabled={updatingStatus}>Cancel Order</Button>}
       </div>
 
       <Card><CardHeader><CardTitle className="text-base">Delivery Timeline</CardTitle></CardHeader><CardContent><OrderTimeline currentStatus={order.status} history={history.map((h) => ({ previous_status: h.previous_status, new_status: h.new_status, changed_at: h.changed_at }))} /></CardContent></Card>
@@ -214,23 +238,31 @@ export function OrderDetail() {
         {isSafeExternalUrl(order.delivery_location_url) && <a href={order.delivery_location_url ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline"><MapPin className="h-4 w-4" />View delivery location</a>}
       </CardContent></Card>
 
-      <Card><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">Products</CardTitle>{!editing && <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit</Button>}</CardHeader><CardContent>
+      <Card><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">Products & Billing</CardTitle>{!editing && <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Save className="h-4 w-4" />Edit Order</Button>}</CardHeader><CardContent>
         {editing ? <div className="space-y-4">
           <ItemsEditor items={editItems} onChange={setEditItems} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>Override Grand Total (optional)</Label><Input value={grandTotalOverride} onChange={(e) => setGrandTotalOverride(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Delivery Charges (₹)</Label><Input type="number" min="0" step="0.01" value={deliveryCharges} onChange={(e) => setDeliveryCharges(e.target.value)} placeholder="0.00" /></div>
             <div className="space-y-1.5"><Label>Expected Delivery Date</Label><Input type="date" value={expectedDelivery} onChange={(e) => setExpectedDelivery(e.target.value)} /></div>
             <div className="space-y-1.5 sm:col-span-2"><Label>Delivery Location / Google Maps Link</Label><MapLinkInput value={customerMapLink} onChange={(link) => setCustomerMapLink(link)} shop={shop} /></div>
             <div className="space-y-1.5 sm:col-span-2 rounded-md border p-3"><div className="mb-2 flex items-center gap-2"><Navigation className="h-4 w-4 text-primary" /><Label>Delivery Partner (shown when Out for Delivery)</Label></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Input value={partnerName} onChange={(e) => setPartnerName(e.target.value)} placeholder="Partner name" /><Input value={partnerMobile} onChange={(e) => setPartnerMobile(e.target.value)} placeholder="Partner mobile (optional)" inputMode="tel" /></div><div className="mt-3 flex flex-wrap items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={useCurrentPartnerLocation}>Use this device's current location</Button><span className="text-xs text-muted-foreground">{partnerLocation ? `${partnerLocation.lat.toFixed(5)}, ${partnerLocation.lng.toFixed(5)}` : "No partner location shared yet"}</span></div></div>
-            <div className="space-y-1.5 sm:col-span-2"><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><Label>Notes</Label><Textarea value={notes.replace(/\[\[delivery_charge=[^\]]*\]\]\n?/g, "")} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
           </div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button onClick={handleSaveEdit} loading={saving}><Save className="h-4 w-4" />Save Changes</Button></div>
-        </div> : <><div className="divide-y">{items.map((item) => <div key={item.id} className="flex items-center justify-between py-2 text-sm"><div><p className="font-medium">{item.product_name}</p><p className="text-muted-foreground">{item.quantity} {item.unit} × {formatCurrency(item.price)}</p></div><p className="font-medium">{formatCurrency(item.total)}</p></div>)}</div><div className="flex items-center justify-between border-t pt-3 text-base font-semibold"><span>Grand Total</span><span>{formatCurrency(order.grand_total)}</span></div>{order.notes && <p className="mt-3 text-sm text-muted-foreground">Notes: {order.notes}</p>}</>}
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setEditing(false); load(); }}>Cancel</Button><Button onClick={handleSaveEdit} loading={saving}><Save className="h-4 w-4" />Save Changes</Button></div>
+        </div> : <><div className="divide-y">{items.map((item) => <div key={item.id} className="flex items-center justify-between py-2 text-sm"><div><p className="font-medium">{item.product_name}</p><p className="text-muted-foreground">{item.quantity} {item.unit} × {formatCurrency(item.price)}</p></div><p className="font-medium">{formatCurrency(item.total)}</p></div>)}</div><div className="space-y-1 border-t pt-3 text-sm"><div className="flex items-center justify-between"><span className="text-muted-foreground">Products Subtotal</span><span>{formatCurrency(items.reduce((sum, item) => sum + Number(item.total || 0), 0))}</span></div><div className="flex items-center justify-between"><span className="text-muted-foreground">Delivery Charges</span><span>{formatCurrency(Number(extractDeliveryCharge(order.notes) || 0))}</span></div><div className="flex items-center justify-between pt-1 text-base font-semibold"><span>Grand Total</span><span>{formatCurrency(order.grand_total)}</span></div></div>{order.notes && <p className="mt-3 text-sm text-muted-foreground">Notes: {order.notes.replace(/\[\[delivery_charge=[^\]]*\]\]\n?/g, "") || "—"}</p>}</>}
       </CardContent></Card>
 
       {invoices.length > 0 && <Card><CardHeader><CardTitle className="text-base">Invoice / Bill</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => handleViewInvoice("view")}><Eye className="h-4 w-4" />View Invoice</Button><Button variant="outline" onClick={() => handleViewInvoice("download")}><Download className="h-4 w-4" />Download Invoice</Button></CardContent></Card>}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}><DialogContent><DialogHeader><DialogTitle>Delete this order?</DialogTitle><DialogDescription>This cannot be undone. The order, its items, and status history will be removed.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button><Button variant="destructive" onClick={handleDelete}>Delete Order</Button></DialogFooter></DialogContent></Dialog>
+
+      <Dialog open={pendingStatus !== null} onOpenChange={(open) => { if (!open && !updatingStatus) setPendingStatus(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{pendingStatus === "cancelled" ? "Cancel this order?" : `Change status to ${pendingStatus ? STATUS_LABEL[pendingStatus] : ""}?`}</DialogTitle><DialogDescription>{pendingStatus === "cancelled" ? "This will mark the order as cancelled." : "Please confirm this status change. You can move back later using the Back button."}</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="outline" onClick={() => setPendingStatus(null)} disabled={updatingStatus}>No, Keep Current Status</Button><Button variant={pendingStatus === "cancelled" ? "destructive" : "default"} onClick={() => pendingStatus && performStatusUpdate(pendingStatus)} loading={updatingStatus} disabled={!pendingStatus || updatingStatus}>Yes, Change Status</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
