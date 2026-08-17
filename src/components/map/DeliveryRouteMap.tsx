@@ -25,6 +25,7 @@ interface DeliveryRouteMapProps {
   className?: string;
   height?: number;
   markers?: MarkerMeta[];
+  onRefresh?: () => void | Promise<void>;
 }
 
 function fixIconDefaults() {
@@ -40,12 +41,13 @@ function makeIcon(emoji: string, color: string) {
   return L.divIcon({ html, className: "", iconSize: [36, 36], iconAnchor: [18, 18] });
 }
 
-export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, className, height = 280, markers = [] }: DeliveryRouteMapProps) {
+export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, className, height = 280, markers = [], onRefresh }: DeliveryRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const [resolvedCustomer, setResolvedCustomer] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<LatLng[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,8 +69,6 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
     return list;
   }, [shop, effectiveCustomer, driver]);
 
-  // Before tracking starts: Shop -> Customer.
-  // Once a driver location exists: Driver -> Customer.
   const routeStart = driver ?? shop;
   const routeStartKey = routeStart ? `${routeStart.lat},${routeStart.lng}` : "none";
 
@@ -129,8 +129,6 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
 
     if (routeStart && effectiveCustomer) {
       const routePoints = route ?? [routeStart, effectiveCustomer];
-      // A soft outline underneath plus a bright primary line gives the familiar
-      // delivery-app route treatment while remaining independent of map branding.
       L.polyline(routePoints.map((point) => [point.lat, point.lng]), {
         color: "#ffffff",
         weight: 8,
@@ -153,12 +151,34 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
   }, [points, markers, route, routeStartKey, effectiveCustomer, driver]);
 
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefresh?.();
+      mapRef.current?.invalidateSize();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div
-      ref={containerRef}
-      className={cn("w-full overflow-hidden rounded-lg border", className)}
+      className={cn("relative w-full overflow-hidden rounded-lg border", className)}
       style={{ height }}
       aria-label="Delivery route map"
-    />
+    >
+      <div ref={containerRef} className="absolute inset-0" />
+      <button
+        type="button"
+        onClick={() => void handleRefresh()}
+        disabled={refreshing}
+        aria-label="Refresh live delivery location"
+        title="Refresh live delivery location"
+        className="absolute left-[48px] top-2 z-[1000] flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background/95 text-foreground shadow-md backdrop-blur-sm transition hover:bg-muted disabled:cursor-wait disabled:opacity-70"
+      >
+        <span className={refreshing ? "animate-spin" : ""}>↻</span>
+      </button>
+    </div>
   );
 }
