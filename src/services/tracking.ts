@@ -56,6 +56,12 @@ export async function stopDeliveryTracking(token: string, latitude?: number, lon
   if (error) throw new Error(error.message || "Unable to stop delivery tracking.");
 }
 
+export async function resolveDeliveryCoordinates(url: string): Promise<{ lat: number; lng: number } | null> {
+  const { data, error } = await supabase.functions.invoke("resolve-delivery-location", { body: { url } });
+  if (error || !data || typeof data.lat !== "number" || typeof data.lng !== "number") return null;
+  return { lat: data.lat, lng: data.lng };
+}
+
 /** Best-effort Realtime subscription. Public tracking retains polling as the fallback because RLS must not be weakened. */
 export function subscribeToDeliveryLocation(orderId: string, onChange: () => void) {
   const channel = supabase.channel(`delivery-location:${orderId}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${orderId}` }, onChange).subscribe();
