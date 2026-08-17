@@ -14,6 +14,10 @@ concurrency:
   group: github-pages
   cancel-in-progress: false
 
+env:
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
 jobs:
   deploy:
     environment:
@@ -28,12 +32,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - name: Verify Supabase configuration
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo "VITE_SUPABASE_URL is missing"; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo "VITE_SUPABASE_ANON_KEY is missing"; exit 1; }
+          echo "Supabase environment variables are available to the build."
       - name: Build GitHub Pages bundle
         run: npx vite build
         env:
           VITE_DEPLOY_TARGET: github-pages
-          VITE_SUPABASE_URL: https://kxelijflylhzjfzpynhg.supabase.co
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
