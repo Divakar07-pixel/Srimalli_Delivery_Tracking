@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { cn } from "@/lib/utils";
+import { resolveDeliveryCoordinates } from "@/services/tracking";
 import type { LatLng } from "@/lib/map";
 
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
@@ -19,6 +20,7 @@ interface MarkerMeta {
 interface DeliveryRouteMapProps {
   shop: LatLng | null;
   customer: LatLng | null;
+  customerMapUrl?: string | null;
   driver?: LatLng | null;
   className?: string;
   height?: number;
@@ -34,23 +36,36 @@ const CUSTOMER_EMOJI = "🏠";
 const DRIVER_EMOJI = "🛵";
 
 function makeIcon(emoji: string, color: string) {
-  const html = `<div style="width:34px;height:34px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);">${emoji}</div>`;
-  return L.divIcon({ html, className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
+  const html = `<div style="width:36px;height:36px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.35);">${emoji}</div>`;
+  return L.divIcon({ html, className: "", iconSize: [36, 36], iconAnchor: [18, 18] });
 }
 
-export function DeliveryRouteMap({ shop, customer, driver, className, height = 280, markers = [] }: DeliveryRouteMapProps) {
+export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, className, height = 280, markers = [] }: DeliveryRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const [resolvedCustomer, setResolvedCustomer] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<LatLng[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedCustomer(null);
+    if (customer || !customerMapUrl) return;
+    resolveDeliveryCoordinates(customerMapUrl).then((coordinates) => {
+      if (!cancelled && coordinates) setResolvedCustomer(coordinates);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [customer, customerMapUrl]);
+
+  const effectiveCustomer = customer ?? resolvedCustomer;
 
   const points = useMemo(() => {
     const list: MarkerMeta[] = [];
     if (shop) list.push({ lat: shop.lat, lng: shop.lng, label: "Shop", emoji: SHOP_EMOJI, color: "#f59e0b" });
-    if (customer) list.push({ lat: customer.lat, lng: customer.lng, label: "Customer", emoji: CUSTOMER_EMOJI, color: "#ef4444" });
-    if (driver) list.push({ lat: driver.lat, lng: driver.lng, label: "Delivery driver", emoji: DRIVER_EMOJI, color: "#3b82f6" });
+    if (effectiveCustomer) list.push({ lat: effectiveCustomer.lat, lng: effectiveCustomer.lng, label: "Customer", emoji: CUSTOMER_EMOJI, color: "#ef4444" });
+    if (driver) list.push({ lat: driver.lat, lng: driver.lng, label: "Delivery driver", emoji: DRIVER_EMOJI, color: "#2563eb" });
     return list;
-  }, [shop, customer, driver]);
+  }, [shop, effectiveCustomer, driver]);
 
   // Before tracking starts: Shop -> Customer.
   // Once a driver location exists: Driver -> Customer.
@@ -58,13 +73,13 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
   const routeStartKey = routeStart ? `${routeStart.lat},${routeStart.lng}` : "none";
 
   useEffect(() => {
-    if (!routeStart || !customer) {
+    if (!routeStart || !effectiveCustomer) {
       setRoute(null);
       return;
     }
 
     const controller = new AbortController();
-    const url = `https://router.project-osrm.org/route/v1/driving/${routeStart.lng},${routeStart.lat};${customer.lng},${customer.lat}?overview=full&geometries=geojson`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${routeStart.lng},${routeStart.lat};${effectiveCustomer.lng},${effectiveCustomer.lat}?overview=full&geometries=geojson`;
     fetch(url, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Route unavailable"))))
       .then((data) => {
@@ -76,7 +91,7 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
       });
 
     return () => controller.abort();
-  }, [routeStartKey, customer?.lat, customer?.lng]);
+  }, [routeStartKey, effectiveCustomer?.lat, effectiveCustomer?.lng]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -112,21 +127,31 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
         .bindPopup(`<strong>${p.label}</strong><br/>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
     });
 
-    // Only one primary route is drawn: Shop -> Customer before live tracking,
-    // then Driver -> Customer while/after driver tracking.
-    if (routeStart && customer) {
-      L.polyline((route ?? [routeStart, customer]).map((point) => [point.lat, point.lng]), {
+    if (routeStart && effectiveCustomer) {
+      const routePoints = route ?? [routeStart, effectiveCustomer];
+      // A soft outline underneath plus a bright primary line gives the familiar
+      // delivery-app route treatment while remaining independent of map branding.
+      L.polyline(routePoints.map((point) => [point.lat, point.lng]), {
+        color: "#ffffff",
+        weight: 8,
+        opacity: 0.9,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layerGroup);
+      L.polyline(routePoints.map((point) => [point.lat, point.lng]), {
         color: driver ? "#10b981" : "#3b82f6",
-        weight: 4,
-        dashArray: route ? undefined : "6,4",
-        opacity: 0.85,
+        weight: 5,
+        dashArray: route ? undefined : "8,7",
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round",
       }).addTo(layerGroup);
     }
 
     const latLngs = allPoints.map((p) => L.latLng(p.lat, p.lng));
     const bounds = L.latLngBounds(latLngs);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-  }, [points, markers, route, routeStartKey, customer, driver]);
+  }, [points, markers, route, routeStartKey, effectiveCustomer, driver]);
 
   return (
     <div
