@@ -157,6 +157,9 @@ export function DeliveryShare() {
       if (!started) throw new Error("This delivery link is no longer active.");
       setAssignment(started);
       await requestWakeLock();
+      // Force the first GPS coordinate after every Start Tracking to be sent immediately.
+      // This prevents the existing 15-second throttle from hiding the fresh restart location.
+      lastSentAt.current = 0;
       lastPositionAt.current = 0;
       startGpsWatch();
       setState("sharing");
