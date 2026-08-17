@@ -23,7 +23,7 @@ const PRODUCT_LIST = [
 ];
 
 function blankItem(): DraftOrderItem {
-  return { id: crypto.randomUUID(), product_name: "", quantity: "1", unit: "pcs", price: "" };
+  return { id: crypto.randomUUID(), product_name: "", quantity: "1", unit: "litres", price: "" };
 }
 
 export function ItemsEditor({ items, onChange }: Props) {
@@ -41,11 +41,10 @@ export function ItemsEditor({ items, onChange }: Props) {
 
   return (
     <div className="space-y-3">
-      {/* Desktop table header */}
       <div className="hidden grid-cols-[1fr_90px_90px_110px_110px_40px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
         <span>Product</span>
         <span>Qty</span>
-        <span>Unit</span>
+        <span>Litres</span>
         <span>Price</span>
         <span>Total</span>
         <span />
@@ -73,7 +72,7 @@ export function ItemsEditor({ items, onChange }: Props) {
             onChange={(e) => update(item.id, { quantity: e.target.value })}
           />
           <Input
-            placeholder="Unit"
+            placeholder="Litres"
             value={item.unit}
             onChange={(e) => update(item.id, { unit: e.target.value })}
           />
