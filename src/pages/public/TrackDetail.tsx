@@ -57,13 +57,8 @@ export function TrackDetail() {
   const shop = settings?.shop_latitude != null && settings.shop_longitude != null ? { lat: settings.shop_latitude, lng: settings.shop_longitude } : null;
   const savedCustomer = order?.customer_latitude != null && order.customer_longitude != null ? { lat: order.customer_latitude, lng: order.customer_longitude } : null;
   // Some existing orders store the delivery point only in the saved Google Maps URL.
-  // Recover coordinates from that URL so the customer map can still render without
-  // requiring the order to be edited again.
-  const urlCustomer = parseCoordinatesFromMapUrl(order?.delivery_location_url);
-  const customer = savedCustomer ?? urlCustomer;
-
-  // Keep the last known coordinates even after the driver stops sharing so the
-  // final position remains visible for this specific order.
+  // DeliveryRouteMap resolves supported short Google Maps links server-side.
+  const customer = savedCustomer;
   const driver = partner?.latitude != null && partner.longitude != null ? { lat: partner.latitude, lng: partner.longitude } : null;
   const liveDriver = partner?.active === true ? driver : null;
   const distance = useMemo(() => liveDriver && customer ? haversineKm(liveDriver, customer) : null, [liveDriver?.lat, liveDriver?.lng, customer?.lat, customer?.lng]);
@@ -75,8 +70,7 @@ export function TrackDetail() {
 
   const mapDriver = order.status === "out_for_delivery" || order.status === "delivered" ? driver : null;
   const isStopped = order.status === "out_for_delivery" && partner?.active === false && driver != null;
-  const hasMapPoint = Boolean(shop || customer || mapDriver);
-  const isLive = order.status === "out_for_delivery" && liveDriver != null && customer != null;
+  const hasMapPoint = Boolean(shop || customer || mapDriver || order.customer_map_link || order.delivery_location_url);
 
   return (
     <div className="min-h-screen bg-background pb-16"><div className="mx-auto max-w-2xl px-4 py-8">
@@ -85,9 +79,9 @@ export function TrackDetail() {
       <Card className="mb-4"><CardHeader><CardTitle className="text-base">Delivery Timeline</CardTitle></CardHeader><CardContent><OrderTimeline currentStatus={order.status} history={order.timeline} /></CardContent></Card>
 
       <Card className="mb-4"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Live delivery route</CardTitle></CardHeader><CardContent className="space-y-3">
-        {hasMapPoint ? <DeliveryRouteMap shop={shop} customer={customer} driver={mapDriver} height={320} /> : <p className="text-sm text-muted-foreground">The route will appear after a valid shop or delivery-home location is saved.</p>}
+        {hasMapPoint ? <DeliveryRouteMap shop={shop} customer={customer} customerMapUrl={order.customer_map_link || order.delivery_location_url} driver={mapDriver} height={320} /> : <p className="text-sm text-muted-foreground">The route will appear after a valid shop or delivery-home location is saved.</p>}
         {order.status === "out_for_delivery" && <div className="rounded-lg border p-3 text-sm">
-          {isLive && distance != null ? <div className="space-y-1"><p className="font-medium">🛵 Driver is {formatDistanceKm(distance)} away</p>{eta != null && <p className="text-muted-foreground">Estimated arrival: {eta} min</p>}{lastUpdated && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Updated {lastUpdated}</p>}</div>
+          {liveDriver && distance != null ? <div className="space-y-1"><p className="font-medium">🛵 Driver is {formatDistanceKm(distance)} away</p>{eta != null && <p className="text-muted-foreground">Estimated arrival: {eta} min</p>}{lastUpdated && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Updated {lastUpdated}</p>}</div>
             : isStopped ? <div className="space-y-1"><p className="font-medium">Driver location sharing has stopped.</p><p className="text-xs text-muted-foreground">Showing the last known driver location for this delivery.</p></div>
             : <p className="text-muted-foreground">Your order is out for delivery. Live driver location will appear when tracking starts.</p>}
         </div>}
@@ -103,53 +97,6 @@ export function TrackDetail() {
       {order.has_invoice ? <Card><CardHeader><CardTitle className="text-base">Invoice / Bill</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openInvoice("view")}><Eye className="h-4 w-4" /> View Invoice</Button><Button variant="outline" onClick={() => openInvoice("download")}><Download className="h-4 w-4" /> Download Invoice</Button></CardContent></Card> : <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><FileText className="h-4 w-4" /> No invoice uploaded.</div>}
     </div></div>
   );
-}
-
-function parseCoordinatesFromMapUrl(value?: string | null): { lat: number; lng: number } | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    const candidates = [
-      url.searchParams.get("q"),
-      url.searchParams.get("query"),
-      url.searchParams.get("ll"),
-    ].filter(Boolean) as string[];
-
-    for (const candidate of candidates) {
-      const match = candidate.match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
-      if (match) {
-        const lat = Number(match[1]);
-        const lng = Number(match[2]);
-        if (isValidCoordinate(lat, lng)) return { lat, lng };
-      }
-    }
-
-    const atMatch = url.pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-    if (atMatch) {
-      const lat = Number(atMatch[1]);
-      const lng = Number(atMatch[2]);
-      if (isValidCoordinate(lat, lng)) return { lat, lng };
-    }
-
-    const textMatch = value.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-    if (textMatch) {
-      const lat = Number(textMatch[1]);
-      const lng = Number(textMatch[2]);
-      if (isValidCoordinate(lat, lng)) return { lat, lng };
-    }
-  } catch {
-    const match = value.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-    if (match) {
-      const lat = Number(match[1]);
-      const lng = Number(match[2]);
-      if (isValidCoordinate(lat, lng)) return { lat, lng };
-    }
-  }
-  return null;
-}
-
-function isValidCoordinate(lat: number, lng: number) {
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
 function Row({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>; }
