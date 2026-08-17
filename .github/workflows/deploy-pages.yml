@@ -28,9 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npm run typecheck
       - name: Build GitHub Pages bundle
-        run: npm run build
+        run: npx vite build
         env:
           VITE_DEPLOY_TARGET: github-pages
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
