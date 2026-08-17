@@ -4,7 +4,7 @@ export interface Profile { id: string; name: string; email: string; role: AppRol
 export interface Customer { id: string; name: string; mobile: string; address: string | null; created_at: string; updated_at: string; }
 export interface Order {
   id: string; tracking_id: string; customer_id: string; invoice_number: string; invoice_date: string | null; order_date: string; expected_delivery_date: string | null;
-  status: OrderStatus; grand_total: number; notes: string | null; delivery_location_url: string | null; customer_latitude: number | null; customer_longitude: number | null; customer_map_link: string | null;
+  status: OrderStatus; grand_total: number; billing_address: string | null; notes: string | null; delivery_location_url: string | null; customer_latitude: number | null; customer_longitude: number | null; customer_map_link: string | null;
   delivery_partner_name: string | null; delivery_partner_mobile: string | null; delivery_partner_latitude: number | null; delivery_partner_longitude: number | null; delivery_partner_location_updated_at: string | null;
   delivery_tracking_token: string | null; delivery_tracking_active: boolean; delivery_tracking_started_at: string | null; delivery_tracking_stopped_at: string | null; created_at: string; updated_at: string;
 }
