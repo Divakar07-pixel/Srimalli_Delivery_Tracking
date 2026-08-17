@@ -15,8 +15,9 @@ const timelineSteps = [
   { key: "delivered", label: "Delivered" },
 ] as const;
 
-// Prefer a fresh browser GPS reading so the saved driver position does not remain stale.
-const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 };
+// Prefer a fresh GPS fix. A small 2-second send floor prevents excessive RPC traffic
+// while still keeping the customer view effectively live during movement.
+const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 };
 
 export function DeliveryShare() {
   const { token = "" } = useParams();
@@ -31,9 +32,9 @@ export function DeliveryShare() {
   });
   const [showCompletedPrompt, setShowCompletedPrompt] = useState(false);
   const watchId = useRef<number | null>(null);
+  const lastSentAt = useRef(0);
   const lastPositionAt = useRef(0);
   const latestPosition = useRef<GeolocationPosition | null>(null);
-  const sendingPosition = useRef(false);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
 
   useEffect(() => {
@@ -80,20 +81,14 @@ export function DeliveryShare() {
     const now = Date.now();
     setCurrentLocation({ latitude, longitude });
     setLastUpdate(now);
-
-    // Every fresh GPS reading is eligible for Supabase immediately. This removes
-    // the old client-side 15-second throttle that could leave the customer's map
-    // showing an old position while the driver was already moving.
-    if (sendingPosition.current) return;
-    sendingPosition.current = true;
+    if (now - lastSentAt.current < 2_000) return;
+    lastSentAt.current = now;
     try {
       await updateDeliveryPartnerLocation(token, latitude, longitude);
       setMessage("GPS connected. Location is sharing.");
     } catch (error) {
       setState("error");
       setMessage((error as Error).message);
-    } finally {
-      sendingPosition.current = false;
     }
   };
 
@@ -125,12 +120,12 @@ export function DeliveryShare() {
       navigator.geolocation.getCurrentPosition(
         (position) => void sendPosition(position),
         () => {
-          if (Date.now() - lastPositionAt.current > 30_000) startGpsWatch();
+          if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
         },
         gpsOptions
       );
 
-      if (Date.now() - lastPositionAt.current > 30_000) startGpsWatch();
+      if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
     };
 
     const handleVisibility = () => {
@@ -139,10 +134,9 @@ export function DeliveryShare() {
 
     window.addEventListener("pageshow", recoverGps);
     document.addEventListener("visibilitychange", handleVisibility);
-    // Keep the existing watchPosition as the primary GPS source. The periodic
-    // getCurrentPosition call is a heartbeat/recovery path for Android and iOS
-    // browsers that temporarily stop delivering watchPosition callbacks.
-    const interval = window.setInterval(recoverGps, 10_000);
+    // Keep watchPosition as the primary GPS source and use this heartbeat to
+    // recover quickly when a mobile browser pauses GPS callbacks.
+    const interval = window.setInterval(recoverGps, 5_000);
     recoverGps();
 
     return () => {
@@ -167,8 +161,9 @@ export function DeliveryShare() {
       if (!started) throw new Error("This delivery link is no longer active.");
       setAssignment(started);
       await requestWakeLock();
+      // Force the first GPS coordinate after every Start Tracking to be sent immediately.
+      lastSentAt.current = 0;
       lastPositionAt.current = 0;
-      sendingPosition.current = false;
       startGpsWatch();
       setState("sharing");
       setMessage("GPS connected. Location is sharing.");
