@@ -1,6 +1,6 @@
 import { Check, Circle, XCircle } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils";
-import { ACTIVE_STATUS_FLOW, STATUS_LABEL } from "@/constants/status";
+import { STATUS_LABEL } from "@/constants/status";
 import type { OrderStatus } from "@/types/database";
 import type { TrackingTimelineEntry } from "@/types/order";
 
@@ -8,6 +8,15 @@ interface Props {
   currentStatus: OrderStatus;
   history: TrackingTimelineEntry[];
 }
+
+// The customer/admin delivery timeline intentionally shows only the three
+// delivery milestones. Other order statuses remain available to the order
+// system and status controls; they are simply not displayed in this timeline.
+const DELIVERY_TIMELINE: OrderStatus[] = [
+  "arrived_at_hub",
+  "out_for_delivery",
+  "delivered",
+];
 
 export function OrderTimeline({ currentStatus, history }: Props) {
   if (currentStatus === "cancelled") {
@@ -24,22 +33,21 @@ export function OrderTimeline({ currentStatus, history }: Props) {
     );
   }
 
-  const currentIndex = ACTIVE_STATUS_FLOW.indexOf(currentStatus);
+  const currentIndex = DELIVERY_TIMELINE.indexOf(currentStatus);
   const timestampFor = (status: OrderStatus) => history.find((h) => h.new_status === status)?.changed_at;
 
   return (
     <div className="relative">
-      {/* Mobile: vertical. Desktop: horizontal. */}
       <ol className="flex flex-col gap-0 md:flex-row md:items-start md:justify-between md:gap-2">
-        {ACTIVE_STATUS_FLOW.map((status, index) => {
-          const isComplete = index < currentIndex || (index === currentIndex && currentIndex === ACTIVE_STATUS_FLOW.length - 1);
+        {DELIVERY_TIMELINE.map((status, index) => {
+          const isComplete = currentIndex >= 0 && (index < currentIndex || (index === currentIndex && currentIndex === DELIVERY_TIMELINE.length - 1));
           const isCurrent = index === currentIndex && !isComplete;
-          const isDone = index <= currentIndex;
+          const isDone = currentIndex >= 0 && index <= currentIndex;
           const ts = timestampFor(status);
 
           return (
             <li key={status} className="relative flex flex-1 gap-3 pb-8 md:flex-col md:items-center md:gap-2 md:pb-0 md:text-center">
-              {index < ACTIVE_STATUS_FLOW.length - 1 && (
+              {index < DELIVERY_TIMELINE.length - 1 && (
                 <span
                   aria-hidden
                   className={cn(
