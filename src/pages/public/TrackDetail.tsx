@@ -22,9 +22,11 @@ export function TrackDetail() {
   const [partner, setPartner] = useState<DeliveryPartnerLocation | null>(null);
   const { toast } = useToast();
 
-  const refresh = () => getOrderTracking(reference).then((detail) => {
+  const refresh = () => getOrderTracking(reference).then(async (detail) => {
     setOrder(detail);
-    if (detail?.status === "out_for_delivery") return getDeliveryPartnerLocation(reference).then(setPartner);
+    if (detail?.status === "out_for_delivery" || detail?.status === "delivered") {
+      return getDeliveryPartnerLocation(reference).then(setPartner);
+    }
     setPartner(null);
     return undefined;
   });
@@ -54,29 +56,46 @@ export function TrackDetail() {
 
   const shop = settings?.shop_latitude != null && settings.shop_longitude != null ? { lat: settings.shop_latitude, lng: settings.shop_longitude } : null;
   const customer = order?.customer_latitude != null && order.customer_longitude != null ? { lat: order.customer_latitude, lng: order.customer_longitude } : null;
-  const driver = partner?.active && partner.latitude != null && partner.longitude != null ? { lat: partner.latitude, lng: partner.longitude } : null;
-  const distance = useMemo(() => driver && customer ? haversineKm(driver, customer) : null, [driver?.lat, driver?.lng, customer?.lat, customer?.lng]);
+  // Keep the last known coordinates even after the driver stops sharing so the
+  // final position remains visible for this specific order.
+  const driver = partner?.latitude != null && partner.longitude != null ? { lat: partner.latitude, lng: partner.longitude } : null;
+  const liveDriver = partner?.active === true ? driver : null;
+  const distance = useMemo(() => liveDriver && customer ? haversineKm(liveDriver, customer) : null, [liveDriver?.lat, liveDriver?.lng, customer?.lat, customer?.lng]);
   const eta = distance != null ? estimateMinutes(distance) : null;
   const lastUpdated = partner?.updated_at ? formatAge(partner.updated_at) : null;
 
   if (order === undefined) return <div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
   if (order === null) return <div className="mx-auto max-w-2xl px-4 py-16"><EmptyState title={error ? "We couldn't load this order." : "No matching orders."} description={error ? "Check your connection and try again." : "This tracking link may be incorrect."} action={error ? <Button onClick={() => window.location.reload()}>Try again</Button> : undefined} /></div>;
 
+  const mapDriver = order.status === "out_for_delivery" || order.status === "delivered" ? driver : null;
+  const isStopped = order.status === "out_for_delivery" && partner?.active === false && driver != null;
+
   return (
     <div className="min-h-screen bg-background pb-16"><div className="mx-auto max-w-2xl px-4 py-8">
       <Link to="/track" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back to search</Link>
       <div className="mb-6 flex items-start justify-between"><div><p className="text-sm text-muted-foreground">Order #{order.invoice_number}</p><h1 className="text-xl font-semibold">{order.customer_name}</h1></div><StatusBadge status={order.status} /></div>
       <Card className="mb-4"><CardHeader><CardTitle className="text-base">Delivery Timeline</CardTitle></CardHeader><CardContent><OrderTimeline currentStatus={order.status} history={order.timeline} /></CardContent></Card>
+
       <Card className="mb-4"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Live delivery route</CardTitle></CardHeader><CardContent className="space-y-3">
-        {shop && customer ? <DeliveryRouteMap shop={shop} customer={customer} driver={driver} height={320} /> : <p className="text-sm text-muted-foreground">The route will appear after the shop and delivery-home coordinates are saved.</p>}
-        {order.status === "out_for_delivery" && <div className="rounded-lg border p-3 text-sm">{driver && distance != null ? <div className="space-y-1"><p className="font-medium">🛵 Driver is {formatDistanceKm(distance)} away</p>{eta != null && <p className="text-muted-foreground">Estimated arrival: {eta} min</p>}{lastUpdated && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Updated {lastUpdated}</p>}</div> : <p className="text-muted-foreground">Your order is out for delivery. Live driver location will appear when tracking starts.</p>}</div>}
+        {shop && customer ? <DeliveryRouteMap shop={shop} customer={customer} driver={mapDriver} height={320} /> : <p className="text-sm text-muted-foreground">The route will appear after the shop and delivery-home coordinates are saved.</p>}
+        {order.status === "out_for_delivery" && <div className="rounded-lg border p-3 text-sm">
+          {liveDriver && distance != null ? <div className="space-y-1"><p className="font-medium">🛵 Driver is {formatDistanceKm(distance)} away</p>{eta != null && <p className="text-muted-foreground">Estimated arrival: {eta} min</p>}{lastUpdated && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> Updated {lastUpdated}</p>}</div>
+            : isStopped ? <div className="space-y-1"><p className="font-medium">Driver location sharing has stopped.</p><p className="text-xs text-muted-foreground">Showing the last known driver location for this delivery.</p></div>
+            : <p className="text-muted-foreground">Your order is out for delivery. Live driver location will appear when tracking starts.</p>}
+        </div>}
+        {order.status === "delivered" && <div className="rounded-lg border p-3 text-sm"><p className="font-medium">Delivered</p>{driver && lastUpdated && <p className="mt-1 text-xs text-muted-foreground">Final driver location · {lastUpdated}</p>}</div>}
       </CardContent></Card>
+
       <Card className="mb-4"><CardHeader><CardTitle className="text-base">Billing Information</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><Row label="Customer" value={order.customer_name} /><Row label="Mobile" value={order.masked_mobile} /><Row label="Billing Address" value={order.billing_address || "—"} /><Row label="Invoice Date" value={formatDate(order.invoice_date)} /><Row label="Order Date" value={formatDate(order.order_date)} /><Row label="Expected Delivery" value={formatDate(order.expected_delivery_date)} /></CardContent></Card>
+
       {isSafeExternalUrl(order.delivery_location_url) && <Card className="mb-4"><CardHeader><CardTitle className="text-base">Delivery Location</CardTitle></CardHeader><CardContent className="space-y-2"><div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" /><span>Open the saved delivery location in maps.</span></div><a href={order.delivery_location_url ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center text-sm font-medium text-primary underline-offset-4 hover:underline">Open Google Maps</a></CardContent></Card>}
+
       <Card className="mb-4"><CardHeader><CardTitle className="text-base">Products</CardTitle></CardHeader><CardContent className="space-y-2">{order.items.length === 0 ? <p className="text-sm text-muted-foreground">No items on file.</p> : <div className="divide-y">{order.items.map((item, idx) => <div key={idx} className="flex items-center justify-between py-2 text-sm"><div><p className="font-medium">{item.product_name}</p><p className="text-muted-foreground">{item.quantity} {item.unit} × {formatCurrency(item.price)}</p></div><p className="font-medium">{formatCurrency(item.total)}</p></div>)}</div>}<div className="flex items-center justify-between border-t pt-3 text-base font-semibold"><span>Grand Total</span><span>{formatCurrency(order.grand_total)}</span></div></CardContent></Card>
+
       {order.has_invoice ? <Card><CardHeader><CardTitle className="text-base">Invoice / Bill</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openInvoice("view")}><Eye className="h-4 w-4" /> View Invoice</Button><Button variant="outline" onClick={() => openInvoice("download")}><Download className="h-4 w-4" /> Download Invoice</Button></CardContent></Card> : <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><FileText className="h-4 w-4" /> No invoice uploaded.</div>}
     </div></div>
   );
 }
+
 function Row({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>; }
 function formatAge(value: string) { const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return `${seconds} seconds ago`; const minutes = Math.floor(seconds / 60); if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`; const hours = Math.floor(minutes / 60); return `${hours} hour${hours === 1 ? "" : "s"} ago`; }
