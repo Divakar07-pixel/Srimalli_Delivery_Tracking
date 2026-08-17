@@ -147,6 +147,7 @@ export function DeliveryShare() {
   if (!assignment) return <div className="mx-auto max-w-md px-4 py-20 text-center"><h1 className="text-xl font-semibold">Delivery link unavailable</h1><p className="mt-2 text-sm text-muted-foreground">Ask the shop to send a current delivery link.</p></div>;
 
   const isDark = theme === "dark";
+  const hasCustomerLocation = assignment.customer_latitude != null && assignment.customer_longitude != null;
 
   return (
     <main className={`${isDark ? "dark" : ""} mx-auto min-h-screen max-w-md bg-background px-4 py-6 text-foreground transition-colors sm:py-10`}>
@@ -224,13 +225,16 @@ export function DeliveryShare() {
           </div>
 
           <div className="grid gap-2">
-            {currentLocation && state === "sharing" && (
-              <Button className="h-12 w-full" onClick={() => openMaps(currentLocation.latitude, currentLocation.longitude, false)}>
-                <MapPin className="h-4 w-4" /> Open My Location in Google Maps
+            {hasCustomerLocation && (
+              <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}>
+                <MapPin className="h-4 w-4" /> Open Customer Location in Google Maps
               </Button>
             )}
-            {assignment.customer_latitude != null && assignment.customer_longitude != null && <Button variant="outline" className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}><MapPin className="h-4 w-4" /> Open Customer Location</Button>}
-            {assignment.customer_latitude != null && assignment.customer_longitude != null && <Button variant="outline" className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> Navigate to Customer</Button>}
+            {hasCustomerLocation && (
+              <Button variant="outline" className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}>
+                <Navigation className="h-4 w-4" /> Navigate to Customer
+              </Button>
+            )}
             {state !== "sharing" ? <Button className="h-12 w-full" onClick={startSharing} disabled={state === "starting" || state === "stopping"}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={state === "stopping"}><Power className="h-4 w-4" />{state === "stopping" ? "Stopping…" : "STOP TRACKING"}</Button>}
           </div>
 
