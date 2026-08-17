@@ -243,7 +243,7 @@ export function DeliveryShare() {
             <div className="grid gap-2">
               {hasCustomerLocation && <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}><MapPin className="h-4 w-4" /> Open Customer Location in Google Maps</Button>}
               {hasCustomerLocation && <Button variant="outline" className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> Navigate to Customer</Button>}
-              {state !== "sharing" ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "stopping" ? "Stopping…" : "STOP TRACKING"}</Button>}
+              {state !== "sharing" ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />STOP TRACKING</Button>}
             </div>
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><ShieldCheck className="mb-1 h-4 w-4" /> Your location is shared only for the active delivery session.</div>
             <p className="text-center text-xs text-muted-foreground">{message}</p>
