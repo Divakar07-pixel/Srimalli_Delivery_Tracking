@@ -10,6 +10,18 @@ interface Props {
   onChange: (items: DraftOrderItem[]) => void;
 }
 
+const PRODUCT_LIST = [
+  "Sesame Oil",
+  "Groundnut Oil",
+  "Coconut Oil",
+  "Deepam Oil",
+  "Castor Oil",
+  "Neem Oil",
+  "Peanut",
+  "Gram",
+  "Sunflower Oil",
+];
+
 function blankItem(): DraftOrderItem {
   return { id: crypto.randomUUID(), product_name: "", quantity: "1", unit: "pcs", price: "" };
 }
@@ -46,7 +58,8 @@ export function ItemsEditor({ items, onChange }: Props) {
         >
           <div className="col-span-2 md:col-span-1">
             <Input
-              placeholder="Product name"
+              list="order-product-list"
+              placeholder="Type or select product"
               value={item.product_name}
               onChange={(e) => update(item.id, { product_name: e.target.value })}
             />
@@ -81,6 +94,12 @@ export function ItemsEditor({ items, onChange }: Props) {
           </Button>
         </div>
       ))}
+
+      <datalist id="order-product-list">
+        {PRODUCT_LIST.map((product) => (
+          <option key={product} value={product} />
+        ))}
+      </datalist>
 
       <div className="flex items-center justify-between pt-1">
         <Button type="button" variant="outline" size="sm" onClick={add}>
