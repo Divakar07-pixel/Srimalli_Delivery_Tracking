@@ -7,4 +7,4 @@ export interface OrderTrackingDetail {
 }
 export interface OrderSearchSummary { order_id: string; tracking_id: string; invoice_number: string; order_date: string; grand_total: number; status: OrderStatus; masked_mobile: string; }
 export interface DraftOrderItem { id: string; product_name: string; quantity: string; unit: string; price: string; }
-export interface DraftOrder { customerName: string; mobile: string; address: string; invoiceNumber: string; invoiceDate: string; orderDate: string; expectedDeliveryDate: string; status: OrderStatus; notes: string; deliveryLocationUrl: string; customerMapLink: string; customerLatitude?: number | null; customerLongitude?: number | null; grandTotalOverride: string; items: DraftOrderItem[]; }
+export interface DraftOrder { customerName: string; mobile: string; address: string; invoiceNumber: string; invoiceDate: string; orderDate: string; expectedDeliveryDate: string; status: OrderStatus; notes: string; deliveryLocationUrl: string; customerMapLink: string; customerLatitude?: number | null; customerLongitude?: number | null; grandTotalOverride: string; deliveryCharges: string; items: DraftOrderItem[]; }
