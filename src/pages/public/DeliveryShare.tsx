@@ -38,7 +38,7 @@ export function DeliveryShare() {
     root.classList.toggle("dark", theme === "dark");
     body.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
-    try { localStorage.setItem("delivery-driver-theme", theme); } catch {}
+    try { localStorage.setItem("delivery-driver-theme", theme); } catch { /* localStorage may be unavailable */ }
     return () => {
       root.classList.remove("dark");
       body.classList.remove("dark");
@@ -66,7 +66,7 @@ export function DeliveryShare() {
         wakeLock.current = await navigator.wakeLock.request("screen");
         wakeLock.current.addEventListener("release", () => { wakeLock.current = null; });
       }
-    } catch {}
+    } catch { /* Wake Lock is optional and may be unsupported or denied */ }
   };
 
   const sendPosition = async (position: GeolocationPosition) => {
@@ -145,7 +145,6 @@ export function DeliveryShare() {
   if (assignment === undefined) return <div className="flex min-h-screen items-center justify-center bg-background text-foreground"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
   if (!assignment) return <div className="mx-auto max-w-md bg-background px-4 py-20 text-center text-foreground"><h1 className="text-xl font-semibold">Delivery link unavailable</h1><p className="mt-2 text-sm text-muted-foreground">Ask the shop to send a current delivery link.</p></div>;
 
-  const isDark = theme === "dark";
   const isBusy = state === "starting" || state === "stopping";
   const hasCustomerLocation = assignment.customer_latitude != null && assignment.customer_longitude != null;
 
