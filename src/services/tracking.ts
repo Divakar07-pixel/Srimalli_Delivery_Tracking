@@ -11,7 +11,18 @@ export async function searchOrdersByMobile(mobile: string): Promise<OrderSearchS
 export async function getOrderTracking(reference: string): Promise<OrderTrackingDetail | null> {
   const { data, error } = await supabase.rpc("get_order_tracking", { p_reference: reference.trim() });
   if (error) throw new Error("Unable to retrieve tracking information. Please try again.");
-  return (data as OrderTrackingDetail | null) ?? null;
+  const detail = (data as OrderTrackingDetail | null) ?? null;
+  if (!detail) return null;
+
+  if (detail.customer_latitude == null || detail.customer_longitude == null) {
+    const mapUrl = detail.customer_map_link || detail.delivery_location_url;
+    if (mapUrl) {
+      const coordinates = await resolveDeliveryCoordinates(mapUrl).catch(() => null);
+      if (coordinates) return { ...detail, customer_latitude: coordinates.lat, customer_longitude: coordinates.lng };
+    }
+  }
+
+  return detail;
 }
 
 export interface PublicSettings { company_name: string; logo_url: string | null; business_phone: string | null; business_address: string | null; shop_latitude: number | null; shop_longitude: number | null; }
