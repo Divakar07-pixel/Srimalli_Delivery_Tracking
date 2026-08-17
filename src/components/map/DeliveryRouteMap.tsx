@@ -4,7 +4,6 @@ import "leaflet/dist/leaflet.css";
 import { cn } from "@/lib/utils";
 import type { LatLng } from "@/lib/map";
 
-// Import Leaflet's bundled marker images so they resolve correctly under Vite.
 import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
@@ -22,18 +21,12 @@ interface DeliveryRouteMapProps {
   customer: LatLng | null;
   driver?: LatLng | null;
   className?: string;
-  /** Optional map height in pixels; defaults to 280. */
   height?: number;
   markers?: MarkerMeta[];
 }
 
-// Fix Leaflet's default icon paths that break with bundlers.
 function fixIconDefaults() {
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl,
-    iconUrl,
-    shadowUrl,
-  });
+  L.Icon.Default.mergeOptions({ iconRetinaUrl, iconUrl, shadowUrl });
 }
 
 const SHOP_EMOJI = "🏪";
@@ -41,13 +34,7 @@ const CUSTOMER_EMOJI = "🏠";
 const DRIVER_EMOJI = "🛵";
 
 function makeIcon(emoji: string, color: string) {
-  const html = `<div style="
-    width:34px;height:34px;border-radius:50%;
-    background:${color};color:#fff;
-    display:flex;align-items:center;justify-content:center;
-    font-size:18px;border:2px solid #fff;
-    box-shadow:0 2px 6px rgba(0,0,0,.3);
-  ">${emoji}</div>`;
+  const html = `<div style="width:34px;height:34px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);">${emoji}</div>`;
   return L.divIcon({ html, className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
 }
 
@@ -57,25 +44,27 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const [route, setRoute] = useState<LatLng[] | null>(null);
 
-  // Build the list of points once.
   const points = useMemo(() => {
     const list: MarkerMeta[] = [];
     if (shop) list.push({ lat: shop.lat, lng: shop.lng, label: "Shop", emoji: SHOP_EMOJI, color: "#f59e0b" });
     if (customer) list.push({ lat: customer.lat, lng: customer.lng, label: "Customer", emoji: CUSTOMER_EMOJI, color: "#ef4444" });
-    if (driver) list.push({ lat: driver.lat, lng: driver.lng, label: "Delivery", emoji: DRIVER_EMOJI, color: "#3b82f6" });
+    if (driver) list.push({ lat: driver.lat, lng: driver.lng, label: "Delivery driver", emoji: DRIVER_EMOJI, color: "#3b82f6" });
     return list;
   }, [shop, customer, driver]);
 
-  // Use a road route when the routing service is reachable. The map still
-  // works offline or when the service is unavailable by drawing a direct line.
+  // Before tracking starts: Shop -> Customer.
+  // Once a driver location exists: Driver -> Customer.
+  const routeStart = driver ?? shop;
+  const routeStartKey = routeStart ? `${routeStart.lat},${routeStart.lng}` : "none";
+
   useEffect(() => {
-    if (!shop || !customer) {
+    if (!routeStart || !customer) {
       setRoute(null);
       return;
     }
 
     const controller = new AbortController();
-    const url = `https://router.project-osrm.org/route/v1/driving/${shop.lng},${shop.lat};${customer.lng},${customer.lat}?overview=full&geometries=geojson`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${routeStart.lng},${routeStart.lat};${customer.lng},${customer.lat}?overview=full&geometries=geojson`;
     fetch(url, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Route unavailable"))))
       .then((data) => {
@@ -87,9 +76,8 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
       });
 
     return () => controller.abort();
-  }, [shop, customer]);
+  }, [routeStartKey, customer?.lat, customer?.lng]);
 
-  // Any extra markers (e.g. live GPS) get appended.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     fixIconDefaults();
@@ -108,7 +96,6 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
     };
   }, []);
 
-  // Redraw markers + fit bounds whenever points change.
   useEffect(() => {
     const map = mapRef.current;
     const layerGroup = layerGroupRef.current;
@@ -116,7 +103,6 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
 
     layerGroup.clearLayers();
     const allPoints = [...points, ...markers];
-
     if (allPoints.length === 0) return;
 
     allPoints.forEach((p) => {
@@ -126,28 +112,21 @@ export function DeliveryRouteMap({ shop, customer, driver, className, height = 2
         .bindPopup(`<strong>${p.label}</strong><br/>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`);
     });
 
-    // Draw the driving route between shop and customer (or a direct fallback).
-    if (shop && customer) {
-      L.polyline((route ?? [shop, customer]).map((point) => [point.lat, point.lng]), {
-        color: "#3b82f6",
+    // Only one primary route is drawn: Shop -> Customer before live tracking,
+    // then Driver -> Customer while/after driver tracking.
+    if (routeStart && customer) {
+      L.polyline((route ?? [routeStart, customer]).map((point) => [point.lat, point.lng]), {
+        color: driver ? "#10b981" : "#3b82f6",
         weight: 4,
         dashArray: route ? undefined : "6,4",
-        opacity: 0.8,
-      }).addTo(layerGroup);
-    }
-    if (driver && customer) {
-      L.polyline([[driver.lat, driver.lng], [customer.lat, customer.lng]], {
-        color: "#10b981",
-        weight: 3,
-        opacity: 0.8,
+        opacity: 0.85,
       }).addTo(layerGroup);
     }
 
-    // Fit bounds to show all points.
     const latLngs = allPoints.map((p) => L.latLng(p.lat, p.lng));
     const bounds = L.latLngBounds(latLngs);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-  }, [points, markers, route, shop, customer, driver]);
+  }, [points, markers, route, routeStartKey, customer, driver]);
 
   return (
     <div
