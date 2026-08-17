@@ -1,20 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+// GitHub Pages is a static site, so the Supabase publishable key is safe to ship
+// to the browser. Keep environment variables as the preferred configuration,
+// but use the project's public publishable key as a production fallback so a
+// stale/missing GitHub Actions secret cannot break every REST request with 401.
+const DEFAULT_SUPABASE_URL = "https://kxelijflylhzjfzpynhg.supabase.co";
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_1xU_qjh4dXKISjidJOnmXQ_1bmxeiZb";
+
+const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const supabaseAnonKey = String(
+  import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_PUBLISHABLE_KEY
+).trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  // Fail loudly in dev rather than silently breaking every query.
-  console.error(
-    "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy .env.example to .env and fill in your Supabase project credentials."
-  );
+  console.error("Supabase configuration is missing.");
 }
 
-// Note: intentionally not parameterized with a strict Database generic.
-// App-level types in src/types/database.ts (Order, Customer, OrderItem, etc.)
-// are applied explicitly in the services layer instead — see src/services/*.ts.
-// If you generate real types later (`supabase gen types typescript`), you can
-// re-introduce createClient<Database>(...) there.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
