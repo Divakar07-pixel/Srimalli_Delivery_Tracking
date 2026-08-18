@@ -211,6 +211,7 @@ export function DeliveryShare() {
   const driverPoint = currentLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null;
   const customerPoint = hasCustomerLocation ? { lat: assignment.customer_latitude!, lng: assignment.customer_longitude! } : null;
   const phone = assignment.customer_mobile?.replace(/[^\d+]/g, "") || null;
+  const isSharing = state === "sharing";
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -222,8 +223,8 @@ export function DeliveryShare() {
           <CardContent className="space-y-5">
             <div className="rounded-lg border border-border bg-card p-4">
               <p className="text-sm text-muted-foreground">GPS Status</p>
-              <p className="mt-1 flex items-center gap-2 font-medium"><span className={`h-2.5 w-2.5 rounded-full ${state === "sharing" ? "bg-green-500" : "bg-muted-foreground"}`} />{state === "sharing" ? "GPS Connected" : "GPS Disconnected"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Location: {state === "sharing" ? "Sharing" : "Not sharing"}</p>
+              <p className="mt-1 flex items-center gap-2 font-medium"><span className={`h-2.5 w-2.5 rounded-full ${isSharing ? "bg-green-500" : "bg-muted-foreground"}`} />{isSharing ? "GPS Connected" : "GPS Disconnected"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Location: {isSharing ? "Sharing" : "Not sharing"}</p>
               {currentLocation && <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs"><p className="font-medium text-foreground">Current location</p><p className="mt-1 text-muted-foreground">Latitude: {currentLocation.latitude.toFixed(6)}</p><p className="text-muted-foreground">Longitude: {currentLocation.longitude.toFixed(6)}</p><p className={poorAccuracy ? "mt-1 font-medium text-warning" : "mt-1 text-muted-foreground"}>GPS accuracy: {gpsAccuracy != null ? `±${Math.round(gpsAccuracy)} m` : "unknown"}</p>{poorAccuracy && <p className="mt-1 text-warning">Accuracy is low. Keep GPS/location services enabled and move outdoors for a better fix.</p>}</div>}
               {lastUpdate && <p className="mt-2 text-xs text-muted-foreground">Last Update: {formatAge(lastUpdate)}</p>}
             </div>
@@ -246,18 +247,20 @@ export function DeliveryShare() {
               <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{assignment.customer_address || "Saved delivery location"}</p>
             </div>
 
-            {hasCustomerLocation && <div className="overflow-hidden rounded-lg border border-border">
-              <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs"><span className="font-medium">Route preview</span><span className="text-muted-foreground">Leaflet · live GPS</span></div>
-              <DeliveryRouteMap shop={null} customer={customerPoint} driver={driverPoint} height={280} />
+            {!isSharing && <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground"><p className="font-medium text-foreground">Start the delivery first</p><p className="mt-1">After GPS starts, this page will show your live position against the saved customer location.</p></div>}
+
+            {isSharing && <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs"><span className="font-medium">Customer location & live route</span><span className="text-muted-foreground">Leaflet · live GPS</span></div>
+              {hasCustomerLocation ? <DeliveryRouteMap shop={null} customer={customerPoint} driver={driverPoint} height={280} /> : <div className="p-4 text-sm text-muted-foreground">No exact customer coordinates were saved for this order. Confirm the customer's location before navigating.</div>}
             </div>}
 
             <div className="grid gap-2">
-              {hasCustomerLocation && <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> NAVIGATE WITH GOOGLE MAPS</Button>}
+              {!isSharing ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />STOP TRACKING</Button>}
               {phone && <Button variant="outline" className="h-12 w-full" asChild><a href={`tel:${phone}`}><Phone className="h-4 w-4" /> CALL CUSTOMER</a></Button>}
-              {state !== "sharing" ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />STOP TRACKING</Button>}
+              {isSharing && hasCustomerLocation && <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> NAVIGATE WITH GOOGLE MAPS</Button>}
             </div>
 
-            <p className="text-center text-xs text-muted-foreground">Google Maps handles turn-by-turn navigation and traffic-aware routing. This Leaflet map is only the driver's route preview.</p>
+            <p className="text-center text-xs text-muted-foreground">Flow: Start GPS → verify customer location → call customer if needed → open Google Maps → navigate → reach customer → stop tracking.</p>
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><ShieldCheck className="mb-1 h-4 w-4" /> Your location is shared only for the active delivery session.</div>
             <p className="text-center text-xs text-muted-foreground">{message}</p>
             {state === "error" && <Button variant="outline" className="w-full" onClick={startSharing}>Try Again</Button>}
