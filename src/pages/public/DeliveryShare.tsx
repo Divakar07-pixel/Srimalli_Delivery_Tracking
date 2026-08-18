@@ -7,7 +7,7 @@ import { getDeliveryAssignment, startDeliveryTracking, stopDeliveryTracking, upd
 
 type TrackingState = "idle" | "starting" | "sharing" | "stopping" | "error";
 type Theme = "light" | "dark";
-type CurrentLocation = { latitude: number; longitude: number };
+type CurrentLocation = { latitude: number; longitude: number; accuracy: number | null };
 
 const timelineSteps = [
   { key: "arrived_at_hub", label: "Arrived at Hub" },
@@ -15,9 +15,21 @@ const timelineSteps = [
   { key: "delivered", label: "Delivered" },
 ] as const;
 
-// Prefer a fresh GPS fix. A small 2-second send floor prevents excessive RPC traffic
-// while still keeping the customer view effectively live during movement.
+// Fresh, high-accuracy GPS. Browser/device accuracy is reported instead of being hidden.
 const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 };
+const MIN_SEND_DISTANCE_M = 5;
+const MAX_SEND_INTERVAL_MS = 10_000;
+const POOR_ACCURACY_M = 50;
+
+function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const R = 6371000;
+  const dLat = (b.latitude - a.latitude) * Math.PI / 180;
+  const dLng = (b.longitude - a.longitude) * Math.PI / 180;
+  const lat1 = a.latitude * Math.PI / 180;
+  const lat2 = b.latitude * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
 
 export function DeliveryShare() {
   const { token = "" } = useParams();
@@ -26,6 +38,7 @@ export function DeliveryShare() {
   const [message, setMessage] = useState("Start tracking when you begin the delivery.");
   const [lastUpdate, setLastUpdate] = useState<number | null>(null);
   const [currentLocation, setCurrentLocation] = useState<CurrentLocation | null>(null);
+  const [, setClock] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return localStorage.getItem("delivery-driver-theme") === "light" ? "light" : "dark"; }
     catch { return "dark"; }
@@ -33,6 +46,8 @@ export function DeliveryShare() {
   const [showCompletedPrompt, setShowCompletedPrompt] = useState(false);
   const watchId = useRef<number | null>(null);
   const lastSentAt = useRef(0);
+  const lastSentLocation = useRef<{ latitude: number; longitude: number } | null>(null);
+  const sendInFlight = useRef(false);
   const lastPositionAt = useRef(0);
   const latestPosition = useRef<GeolocationPosition | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
@@ -64,13 +79,19 @@ export function DeliveryShare() {
     };
   }, [token]);
 
+  // Keep the "X seconds ago" text live even when the GPS provider is temporarily quiet.
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock((value) => value + 1), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const requestWakeLock = async () => {
     try {
       if ("wakeLock" in navigator && !wakeLock.current) {
         wakeLock.current = await navigator.wakeLock.request("screen");
         wakeLock.current.addEventListener("release", () => { wakeLock.current = null; });
       }
-    } catch { /* Wake Lock is optional and may be unsupported or denied */ }
+    } catch { /* optional */ }
   };
 
   const sendPosition = async (position: GeolocationPosition) => {
@@ -78,17 +99,33 @@ export function DeliveryShare() {
     lastPositionAt.current = Date.now();
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
+    const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null;
     const now = Date.now();
-    setCurrentLocation({ latitude, longitude });
-    setLastUpdate(now);
-    if (now - lastSentAt.current < 2_000) return;
-    lastSentAt.current = now;
+    setCurrentLocation({ latitude, longitude, accuracy });
+
+    const previous = lastSentLocation.current;
+    const moved = previous ? distanceMeters(previous, { latitude, longitude }) : Number.POSITIVE_INFINITY;
+    const dueByTime = now - lastSentAt.current >= MAX_SEND_INTERVAL_MS;
+    const dueByMovement = moved >= MIN_SEND_DISTANCE_M;
+
+    // Never discard a newer GPS fix just because the send floor is active.
+    // The newest fix remains in latestPosition and will be sent on the next meaningful update.
+    if (sendInFlight.current || (!dueByMovement && !dueByTime && previous)) return;
+
+    sendInFlight.current = true;
     try {
-      await updateDeliveryPartnerLocation(token, latitude, longitude);
-      setMessage("GPS connected. Location is sharing.");
+      await updateDeliveryPartnerLocation(token, latitude, longitude, accuracy ?? undefined);
+      lastSentAt.current = Date.now();
+      lastSentLocation.current = { latitude, longitude };
+      setLastUpdate(Date.now());
+      setMessage(accuracy != null && accuracy > POOR_ACCURACY_M
+        ? "GPS connected. Accuracy is currently low; the device is reporting its best available location."
+        : "GPS connected. Location is sharing.");
     } catch (error) {
       setState("error");
       setMessage((error as Error).message);
+    } finally {
+      sendInFlight.current = false;
     }
   };
 
@@ -113,38 +150,27 @@ export function DeliveryShare() {
 
   useEffect(() => {
     if (state !== "sharing") return;
-
     const recoverGps = () => {
       if (!navigator.geolocation) return;
-
       navigator.geolocation.getCurrentPosition(
         (position) => void sendPosition(position),
-        () => {
-          if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
-        },
+        () => { if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch(); },
         gpsOptions
       );
-
       if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
     };
-
     const handleVisibility = () => {
       if (document.visibilityState === "visible") recoverGps();
     };
-
     window.addEventListener("pageshow", recoverGps);
     document.addEventListener("visibilitychange", handleVisibility);
-    // Keep watchPosition as the primary GPS source and use this heartbeat to
-    // recover quickly when a mobile browser pauses GPS callbacks.
     const interval = window.setInterval(recoverGps, 5_000);
     recoverGps();
-
     return () => {
       window.removeEventListener("pageshow", recoverGps);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.clearInterval(interval);
     };
-    // The existing GPS callbacks are intentionally reused; this effect only recovers the existing watch when it becomes stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
@@ -161,8 +187,8 @@ export function DeliveryShare() {
       if (!started) throw new Error("This delivery link is no longer active.");
       setAssignment(started);
       await requestWakeLock();
-      // Force the first GPS coordinate after every Start Tracking to be sent immediately.
       lastSentAt.current = 0;
+      lastSentLocation.current = null;
       lastPositionAt.current = 0;
       startGpsWatch();
       setState("sharing");
@@ -202,6 +228,8 @@ export function DeliveryShare() {
 
   const isBusy = state === "starting" || state === "stopping";
   const hasCustomerLocation = assignment.customer_latitude != null && assignment.customer_longitude != null;
+  const gpsAccuracy = currentLocation?.accuracy;
+  const poorAccuracy = gpsAccuracy != null && gpsAccuracy > POOR_ACCURACY_M;
 
   return (
     <main className="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -221,7 +249,7 @@ export function DeliveryShare() {
               <p className="text-sm text-muted-foreground">GPS Status</p>
               <p className="mt-1 flex items-center gap-2 font-medium"><span className={`h-2.5 w-2.5 rounded-full ${state === "sharing" ? "bg-green-500" : "bg-muted-foreground"}`} />{state === "sharing" ? "GPS Connected" : "GPS Disconnected"}</p>
               <p className="mt-1 text-xs text-muted-foreground">Location: {state === "sharing" ? "Sharing" : "Not sharing"}</p>
-              {currentLocation && <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs"><p className="font-medium text-foreground">Current location</p><p className="mt-1 text-muted-foreground">Latitude: {currentLocation.latitude.toFixed(6)}</p><p className="text-muted-foreground">Longitude: {currentLocation.longitude.toFixed(6)}</p></div>}
+              {currentLocation && <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs"><p className="font-medium text-foreground">Current location</p><p className="mt-1 text-muted-foreground">Latitude: {currentLocation.latitude.toFixed(6)}</p><p className="text-muted-foreground">Longitude: {currentLocation.longitude.toFixed(6)}</p><p className={poorAccuracy ? "mt-1 font-medium text-warning" : "mt-1 text-muted-foreground"}>GPS accuracy: {gpsAccuracy != null ? `±${Math.round(gpsAccuracy)} m` : "unknown"}</p>{poorAccuracy && <p className="mt-1 text-warning">Accuracy is low. Keep GPS/location services enabled and move outdoors for a better fix.</p>}</div>}
               {lastUpdate && <p className="mt-2 text-xs text-muted-foreground">Last Update: {formatAge(lastUpdate)}</p>}
             </div>
 
@@ -231,13 +259,7 @@ export function DeliveryShare() {
                 {timelineSteps.map((step, index) => {
                   const complete = index <= activeTimelineIndex;
                   const current = index === activeTimelineIndex;
-                  return (
-                    <div key={step.key} className="relative text-center">
-                      {index < timelineSteps.length - 1 && <span className={`absolute left-1/2 top-3 h-0.5 w-full ${index < activeTimelineIndex ? "bg-primary" : "bg-border"}`} aria-hidden="true" />}
-                      <span className={`relative z-10 mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold ${complete ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground"} ${current ? "ring-4 ring-primary/20" : ""}`}>{index + 1}</span>
-                      <span className={`mt-2 block text-[11px] leading-4 ${current ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{step.label}</span>
-                    </div>
-                  );
+                  return <div key={step.key} className="relative text-center">{index < timelineSteps.length - 1 && <span className={`absolute left-1/2 top-3 h-0.5 w-full ${index < activeTimelineIndex ? "bg-primary" : "bg-border"}`} aria-hidden="true" />}<span className={`relative z-10 mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold ${complete ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground"} ${current ? "ring-4 ring-primary/20" : ""}`}>{index + 1}</span><span className={`mt-2 block text-[11px] leading-4 ${current ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{step.label}</span></div>;
                 })}
               </div>
             </div>
