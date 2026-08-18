@@ -61,3 +61,8 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
+
+/* Driver delivery page follows the phone's system theme; its old manual toggle is hidden. */
+main > div > div.mb-4.flex.items-center.justify-between.gap-3 > div.flex.rounded-full.border.border-border.bg-card.p-1.shadow-sm {
+  display: none;
+}
