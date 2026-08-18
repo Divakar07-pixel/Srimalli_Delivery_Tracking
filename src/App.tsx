@@ -48,9 +48,9 @@ function GitHubPagesRedirect() {
 }
 
 function App() {
-  // Public pages follow system theme by default; the admin shell re-syncs
-  // to the saved preference once settings load (see AdminShell/Settings).
-  useThemeSync("system");
+  // Keep the application light by default on every device. The phone's
+  // system dark-mode preference must never silently switch the tracking UI.
+  useThemeSync("light");
 
   return (
     <AuthProvider>
