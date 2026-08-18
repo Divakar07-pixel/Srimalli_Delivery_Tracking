@@ -5,6 +5,7 @@ import { ToastProvider } from "@/hooks/useToast";
 import { useThemeSync } from "@/hooks/useThemeSync";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AdminShell } from "@/components/layout/AdminShell";
+import { BackButton } from "@/components/layout/BackButton";
 
 // Public pages load eagerly — this is the surface most visitors hit first,
 // with no login, so it should be fast on a first load.
@@ -57,6 +58,7 @@ function App() {
       <ToastProvider>
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <GitHubPagesRedirect />
+          <BackButton />
           <Routes>
             {/* Public */}
             <Route path="/" element={<Landing />} />
