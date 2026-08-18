@@ -26,7 +26,7 @@ export async function getOrderTracking(reference: string): Promise<OrderTracking
 }
 
 export interface PublicSettings { company_name: string; logo_url: string | null; business_phone: string | null; business_address: string | null; shop_latitude: number | null; shop_longitude: number | null; }
-export interface DeliveryPartnerLocation { name: string | null; mobile: string | null; latitude: number | null; longitude: number | null; updated_at: string | null; active: boolean; }
+export interface DeliveryPartnerLocation { name: string | null; mobile: string | null; latitude: number | null; longitude: number | null; accuracy_m: number | null; updated_at: string | null; active: boolean; }
 
 export async function getDeliveryPartnerLocation(reference: string): Promise<DeliveryPartnerLocation | null> {
   const { data, error } = await supabase.rpc("get_delivery_partner_location", { p_reference: reference.trim() });
@@ -57,8 +57,13 @@ export async function startDeliveryTracking(token: string): Promise<DeliveryAssi
   return (data as DeliveryAssignment | null) ?? null;
 }
 
-export async function updateDeliveryPartnerLocation(token: string, latitude: number, longitude: number) {
-  const { error } = await supabase.rpc("update_delivery_partner_location", { p_token: token, p_latitude: latitude, p_longitude: longitude });
+export async function updateDeliveryPartnerLocation(token: string, latitude: number, longitude: number, accuracyM?: number) {
+  const { error } = await supabase.rpc("update_delivery_partner_location", {
+    p_token: token,
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_accuracy_m: accuracyM ?? null,
+  });
   if (error) throw new Error("Unable to share your location. Please try again.");
 }
 
