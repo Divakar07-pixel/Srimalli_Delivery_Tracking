@@ -38,6 +38,7 @@ export interface DeliveryAssignment {
   order_id: string;
   invoice_number: string;
   customer_name: string;
+  customer_mobile: string | null;
   customer_address: string | null;
   customer_latitude: number | null;
   customer_longitude: number | null;
