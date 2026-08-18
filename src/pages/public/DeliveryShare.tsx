@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { MapPin, Navigation, Power, ShieldCheck, Sun, Moon } from "lucide-react";
+import { MapPin, Navigation, Phone, Power, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeliveryRouteMap } from "@/components/map/DeliveryRouteMap";
 import { getDeliveryAssignment, startDeliveryTracking, stopDeliveryTracking, updateDeliveryPartnerLocation, type DeliveryAssignment } from "@/services/tracking";
 
 type TrackingState = "idle" | "starting" | "sharing" | "stopping" | "error";
-type Theme = "light" | "dark";
 type CurrentLocation = { latitude: number; longitude: number; accuracy: number | null };
 
 const timelineSteps = [
@@ -15,7 +15,6 @@ const timelineSteps = [
   { key: "delivered", label: "Delivered" },
 ] as const;
 
-// Fresh, high-accuracy GPS. Browser/device accuracy is reported instead of being hidden.
 const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 };
 const MIN_SEND_DISTANCE_M = 5;
 const MAX_SEND_INTERVAL_MS = 10_000;
@@ -39,10 +38,6 @@ export function DeliveryShare() {
   const [lastUpdate, setLastUpdate] = useState<number | null>(null);
   const [currentLocation, setCurrentLocation] = useState<CurrentLocation | null>(null);
   const [, setClock] = useState(0);
-  const [theme, setTheme] = useState<Theme>(() => {
-    try { return localStorage.getItem("delivery-driver-theme") === "dark" ? "dark" : "light"; }
-    catch { return "light"; }
-  });
   const [showCompletedPrompt, setShowCompletedPrompt] = useState(false);
   const watchId = useRef<number | null>(null);
   const lastSentAt = useRef(0);
@@ -51,19 +46,6 @@ export function DeliveryShare() {
   const lastPositionAt = useRef(0);
   const latestPosition = useRef<GeolocationPosition | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const previousDark = root.classList.contains("dark");
-    const previousColorScheme = root.style.colorScheme;
-    root.classList.toggle("dark", theme === "dark");
-    root.style.colorScheme = theme;
-    try { localStorage.setItem("delivery-driver-theme", theme); } catch { /* localStorage may be unavailable */ }
-    return () => {
-      root.classList.toggle("dark", previousDark);
-      root.style.colorScheme = previousColorScheme;
-    };
-  }, [theme]);
 
   useEffect(() => {
     getDeliveryAssignment(token)
@@ -79,7 +61,6 @@ export function DeliveryShare() {
     };
   }, [token]);
 
-  // Keep the "X seconds ago" text live even when the GPS provider is temporarily quiet.
   useEffect(() => {
     const interval = window.setInterval(() => setClock((value) => value + 1), 1_000);
     return () => window.clearInterval(interval);
@@ -107,9 +88,6 @@ export function DeliveryShare() {
     const moved = previous ? distanceMeters(previous, { latitude, longitude }) : Number.POSITIVE_INFINITY;
     const dueByTime = now - lastSentAt.current >= MAX_SEND_INTERVAL_MS;
     const dueByMovement = moved >= MIN_SEND_DISTANCE_M;
-
-    // Never discard a newer GPS fix just because the send floor is active.
-    // The newest fix remains in latestPosition and will be sent on the next meaningful update.
     if (sendInFlight.current || (!dueByMovement && !dueByTime && previous)) return;
 
     sendInFlight.current = true;
@@ -230,17 +208,14 @@ export function DeliveryShare() {
   const hasCustomerLocation = assignment.customer_latitude != null && assignment.customer_longitude != null;
   const gpsAccuracy = currentLocation?.accuracy;
   const poorAccuracy = gpsAccuracy != null && gpsAccuracy > POOR_ACCURACY_M;
+  const driverPoint = currentLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null;
+  const customerPoint = hasCustomerLocation ? { lat: assignment.customer_latitude!, lng: assignment.customer_longitude! } : null;
+  const phone = assignment.customer_mobile?.replace(/[^\d+]/g, "") || null;
 
   return (
-    <main className="min-h-screen bg-background text-foreground transition-colors duration-200">
+    <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-md px-4 py-6 sm:py-10">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-muted-foreground">Driver delivery</div>
-          <div className="flex rounded-full border border-border bg-card p-1 shadow-sm">
-            <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")} className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${theme === "light" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}><Sun className="h-3.5 w-3.5" /> Light</button>
-            <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")} className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${theme === "dark" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}><Moon className="h-3.5 w-3.5" /> Dark</button>
-          </div>
-        </div>
+        <div className="mb-4 text-sm font-medium text-muted-foreground">Driver delivery</div>
 
         <Card className="border-border bg-card text-card-foreground">
           <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Navigation className="h-5 w-5 text-primary" /> 🛵 Delivery Tracking</CardTitle></CardHeader>
@@ -264,22 +239,47 @@ export function DeliveryShare() {
               </div>
             </div>
 
-            <div><p className="text-sm text-muted-foreground">Customer</p><p className="font-semibold">{assignment.customer_name}</p><p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{assignment.customer_address || "Saved delivery location"}</p></div>
+            <div>
+              <p className="text-sm text-muted-foreground">Customer</p>
+              <p className="font-semibold">{assignment.customer_name}</p>
+              {phone ? <a href={`tel:${phone}`} className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"><Phone className="h-4 w-4" />{assignment.customer_mobile}</a> : <p className="mt-1 text-sm text-muted-foreground">Phone number unavailable</p>}
+              <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{assignment.customer_address || "Saved delivery location"}</p>
+            </div>
+
+            {hasCustomerLocation && <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs"><span className="font-medium">Route preview</span><span className="text-muted-foreground">Leaflet · live GPS</span></div>
+              <DeliveryRouteMap shop={null} customer={customerPoint} driver={driverPoint} height={280} />
+            </div>}
+
             <div className="grid gap-2">
-              {hasCustomerLocation && <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}><MapPin className="h-4 w-4" /> Open Customer Location in Google Maps</Button>}
-              {hasCustomerLocation && <Button variant="outline" className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> Navigate to Customer</Button>}
+              {hasCustomerLocation && <Button className="h-12 w-full" onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, true)}><Navigation className="h-4 w-4" /> NAVIGATE WITH GOOGLE MAPS</Button>}
+              {phone && <Button variant="outline" className="h-12 w-full" asChild><a href={`tel:${phone}`}><Phone className="h-4 w-4" /> CALL CUSTOMER</a></Button>}
               {state !== "sharing" ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />STOP TRACKING</Button>}
             </div>
+
+            <p className="text-center text-xs text-muted-foreground">Google Maps handles turn-by-turn navigation and traffic-aware routing. This Leaflet map is only the driver's route preview.</p>
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><ShieldCheck className="mb-1 h-4 w-4" /> Your location is shared only for the active delivery session.</div>
             <p className="text-center text-xs text-muted-foreground">{message}</p>
             {state === "error" && <Button variant="outline" className="w-full" onClick={startSharing}>Try Again</Button>}
           </CardContent>
         </Card>
+
         {showCompletedPrompt && <Card className="mt-4"><CardContent className="space-y-3 pt-6"><p className="font-semibold">Delivery completed.</p><p className="text-sm text-muted-foreground">Stop sharing your location?</p><div className="flex gap-2"><Button className="flex-1" onClick={stopSharing}>STOP TRACKING</Button><Button variant="outline" className="flex-1" onClick={() => setShowCompletedPrompt(false)}>CONTINUE</Button></div></CardContent></Card>}
       </div>
     </main>
   );
 }
 
-function openMaps(lat: number, lng: number, navigation: boolean) { const url = navigation ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving` : `https://www.google.com/maps?q=${lat},${lng}`; window.open(url, "_blank", "noopener,noreferrer"); }
-function formatAge(timestamp: number) { const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000)); if (seconds < 60) return `${seconds} seconds ago`; const minutes = Math.floor(seconds / 60); return `${minutes} minute${minutes === 1 ? "" : "s"} ago`; }
+function openMaps(lat: number, lng: number, navigation: boolean) {
+  const url = navigation
+    ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=two-wheeler&dir_action=navigate`
+    : `https://www.google.com/maps?q=${lat},${lng}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function formatAge(timestamp: number) {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `${seconds} seconds ago`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+}
