@@ -41,6 +41,9 @@ export function AdminShell() {
       <div className="border-t p-3"><button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"><LogOut className="h-4 w-4" />Log out</button></div>
     </aside>
     <div className="md:pl-60"><main className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10"><Outlet /></main></div>
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-card md:hidden">{NAV_ITEMS.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => cn("flex flex-col items-center gap-1 py-2.5 text-xs font-medium", isActive ? "text-primary" : "text-muted-foreground")}><item.icon className="h-5 w-5" />{item.label}</NavLink>)}</nav>
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-card md:hidden">
+      {NAV_ITEMS.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => cn("flex flex-col items-center gap-1 py-2.5 text-xs font-medium", isActive ? "text-primary" : "text-muted-foreground")}><item.icon className="h-5 w-5" />{item.label}</NavLink>)}
+      <button onClick={handleLogout} className="flex flex-col items-center gap-1 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"><LogOut className="h-5 w-5" />Log out</button>
+    </nav>
   </div>;
 }
