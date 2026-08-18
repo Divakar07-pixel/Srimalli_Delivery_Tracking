@@ -8,7 +8,10 @@ export interface WhatsAppContext {
   companyName: string;
 }
 
-const trackingUrl = (trackingId: string) => `${window.location.origin}/track/${trackingId}`;
+// GitHub Pages serves this app from the repository subpath. Always include
+// Vite's BASE_URL so shared customer tracking links work when opened directly.
+const trackingUrl = (trackingId: string) =>
+  `${window.location.origin}${import.meta.env.BASE_URL}track/${encodeURIComponent(trackingId)}`;
 
 export function buildWhatsAppMessage(status: OrderStatus, ctx: WhatsAppContext): string {
   const url = trackingUrl(ctx.trackingId);
