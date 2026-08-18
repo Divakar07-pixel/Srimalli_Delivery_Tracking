@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Navigation, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,15 @@ export function AdminLiveDeliveryMap() {
   const [shop, setShop] = useState<LatLng | null>(null);
   const [driver, setDriver] = useState<LatLng | null>(null);
   const [loading, setLoading] = useState(true);
+  const latestUpdatedAt = useRef(0);
+
+  const applyDriverLocation = (location: Awaited<ReturnType<typeof getDeliveryPartnerLocation>>) => {
+    if (!location) return;
+    const updatedAt = location.updated_at ? new Date(location.updated_at).getTime() : 0;
+    if (updatedAt < latestUpdatedAt.current) return;
+    latestUpdatedAt.current = updatedAt;
+    setDriver(location.latitude != null && location.longitude != null ? { lat: location.latitude, lng: location.longitude } : null);
+  };
 
   const load = async () => {
     if (!id) return;
@@ -27,20 +36,21 @@ export function AdminLiveDeliveryMap() {
       if (settings.shop_latitude != null && settings.shop_longitude != null) setShop({ lat: settings.shop_latitude, lng: settings.shop_longitude });
       if (loadedOrder.tracking_id && (loadedOrder.status === "out_for_delivery" || loadedOrder.status === "delivered")) {
         const location = await getDeliveryPartnerLocation(loadedOrder.tracking_id);
-        setDriver(location?.latitude != null && location.longitude != null ? { lat: location.latitude, lng: location.longitude } : null);
-      } else setDriver(null);
+        applyDriverLocation(location);
+      } else { latestUpdatedAt.current = 0; setDriver(null); }
     } catch (error) {
       toast({ title: "Couldn't load live delivery map", description: (error as Error).message, variant: "error" });
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { latestUpdatedAt.current = 0; void load(); }, [id]);
 
   useEffect(() => {
     if (!order?.tracking_id || order.status !== "out_for_delivery") return;
-    const refreshLocation = () => getDeliveryPartnerLocation(order.tracking_id).then((location) => setDriver(location?.latitude != null && location.longitude != null ? { lat: location.latitude, lng: location.longitude } : null)).catch(() => {});
-    const interval = window.setInterval(refreshLocation, 3_000);
+    const refreshLocation = () => getDeliveryPartnerLocation(order.tracking_id).then(applyDriverLocation).catch(() => {});
+    const interval = window.setInterval(refreshLocation, 2_000);
     const unsubscribe = subscribeToDeliveryLocation(order.id, refreshLocation);
+    refreshLocation();
     return () => { window.clearInterval(interval); unsubscribe(); };
   }, [order?.id, order?.tracking_id, order?.status]);
 
