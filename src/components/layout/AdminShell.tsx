@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { LayoutDashboard, Package, PlusCircle, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/services/auth";
 import { getSettings } from "@/services/settings";
 import { useToast } from "@/hooks/useToast";
+import { AdminLiveDeliveryMap } from "@/components/map/AdminLiveDeliveryMap";
 
 const NAV_ITEMS = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -15,7 +16,6 @@ const NAV_ITEMS = [
 
 export function AdminShell() {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("Srimalli Admin");
   const [logoUrl, setLogoUrl] = useState(`${import.meta.env.BASE_URL}icons/icon-192.png`);
 
@@ -27,7 +27,7 @@ export function AdminShell() {
   }, []);
 
   const handleLogout = async () => {
-    try { await signOut(); navigate("/admin/login", { replace: true }); }
+    try { await signOut(); window.location.replace(`${import.meta.env.BASE_URL}admin/login`); }
     catch (e) { toast({ title: "Sign out failed", description: (e as Error).message, variant: "error" }); }
   };
 
@@ -40,7 +40,7 @@ export function AdminShell() {
       <nav className="flex-1 space-y-1 p-3">{NAV_ITEMS.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors", isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground")}><item.icon className="h-4 w-4" />{item.label}</NavLink>)}</nav>
       <div className="border-t p-3"><button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"><LogOut className="h-4 w-4" />Log out</button></div>
     </aside>
-    <div className="md:pl-60"><main className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-6 md:pb-10"><Outlet /></main></div>
+    <div className="md:pl-60"><main className="mx-auto max-w-6xl space-y-5 px-4 pb-24 pt-6 md:px-6 md:pb-10"><Outlet /><AdminLiveDeliveryMap /></main></div>
     <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-card md:hidden">
       {NAV_ITEMS.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => cn("flex flex-col items-center gap-1 py-2.5 text-xs font-medium", isActive ? "text-primary" : "text-muted-foreground")}><item.icon className="h-5 w-5" />{item.label}</NavLink>)}
       <button onClick={handleLogout} className="flex flex-col items-center gap-1 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"><LogOut className="h-5 w-5" />Log out</button>
