@@ -46,17 +46,21 @@ export function DeliveryShare() {
   const lastPositionAt = useRef(0);
   const latestPosition = useRef<GeolocationPosition | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
+  const trackingEnabledRef = useRef(false);
 
   useEffect(() => {
     getDeliveryAssignment(token)
       .then((data) => {
         setAssignment(data);
         if (data?.status === "delivered" && data.tracking_active) setShowCompletedPrompt(true);
+        trackingEnabledRef.current = Boolean(data?.tracking_active);
         if (data?.tracking_active) setState("sharing");
       })
       .catch(() => setAssignment(null));
     return () => {
+      trackingEnabledRef.current = false;
       if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
+      watchId.current = null;
       if (wakeLock.current) void wakeLock.current.release().catch(() => {});
     };
   }, [token]);
@@ -68,14 +72,20 @@ export function DeliveryShare() {
 
   const requestWakeLock = async () => {
     try {
-      if ("wakeLock" in navigator && !wakeLock.current) {
+      if ("wakeLock" in navigator && !wakeLock.current && trackingEnabledRef.current) {
         wakeLock.current = await navigator.wakeLock.request("screen");
         wakeLock.current.addEventListener("release", () => { wakeLock.current = null; });
       }
     } catch { /* optional */ }
   };
 
+  const stopGpsWatch = () => {
+    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
+    watchId.current = null;
+  };
+
   const sendPosition = async (position: GeolocationPosition) => {
+    if (!trackingEnabledRef.current) return;
     latestPosition.current = position;
     lastPositionAt.current = Date.now();
     const latitude = position.coords.latitude;
@@ -92,7 +102,9 @@ export function DeliveryShare() {
 
     sendInFlight.current = true;
     try {
+      if (!trackingEnabledRef.current) return;
       await updateDeliveryPartnerLocation(token, latitude, longitude, accuracy ?? undefined);
+      if (!trackingEnabledRef.current) return;
       lastSentAt.current = Date.now();
       lastSentLocation.current = { latitude, longitude };
       setLastUpdate(Date.now());
@@ -100,6 +112,7 @@ export function DeliveryShare() {
         ? "GPS connected. Accuracy is currently low; the device is reporting its best available location."
         : "GPS connected. Location is sharing.");
     } catch (error) {
+      if (!trackingEnabledRef.current) return;
       setState("error");
       setMessage((error as Error).message);
     } finally {
@@ -108,12 +121,15 @@ export function DeliveryShare() {
   };
 
   const startGpsWatch = () => {
-    if (!navigator.geolocation) return;
-    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+    if (!navigator.geolocation || !trackingEnabledRef.current) return;
+    stopGpsWatch();
     watchId.current = navigator.geolocation.watchPosition(
       (position) => void sendPosition(position),
       (error) => {
+        if (!trackingEnabledRef.current) return;
         if (error.code === error.PERMISSION_DENIED) {
+          trackingEnabledRef.current = false;
+          stopGpsWatch();
           setState("error");
           setMessage("Location access is required to share your live delivery location.");
         } else if (error.code === error.TIMEOUT) {
@@ -127,18 +143,18 @@ export function DeliveryShare() {
   };
 
   useEffect(() => {
-    if (state !== "sharing") return;
+    if (state !== "sharing" || !trackingEnabledRef.current) return;
     const recoverGps = () => {
-      if (!navigator.geolocation) return;
+      if (!trackingEnabledRef.current || !navigator.geolocation) return;
       navigator.geolocation.getCurrentPosition(
         (position) => void sendPosition(position),
-        () => { if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch(); },
+        () => { if (trackingEnabledRef.current && Date.now() - lastPositionAt.current > 10_000) startGpsWatch(); },
         gpsOptions
       );
-      if (Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
+      if (trackingEnabledRef.current && Date.now() - lastPositionAt.current > 10_000) startGpsWatch();
     };
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") recoverGps();
+      if (document.visibilityState === "visible" && trackingEnabledRef.current) recoverGps();
     };
     window.addEventListener("pageshow", recoverGps);
     document.addEventListener("visibilitychange", handleVisibility);
@@ -164,6 +180,7 @@ export function DeliveryShare() {
       const started = await startDeliveryTracking(token);
       if (!started) throw new Error("This delivery link is no longer active.");
       setAssignment(started);
+      trackingEnabledRef.current = true;
       await requestWakeLock();
       lastSentAt.current = 0;
       lastSentLocation.current = null;
@@ -172,6 +189,8 @@ export function DeliveryShare() {
       setState("sharing");
       setMessage("GPS connected. Location is sharing.");
     } catch (error) {
+      trackingEnabledRef.current = false;
+      stopGpsWatch();
       setState("error");
       setMessage((error as Error).message);
     }
@@ -179,15 +198,17 @@ export function DeliveryShare() {
 
   const stopSharing = async () => {
     setState("stopping");
+    trackingEnabledRef.current = false;
+    stopGpsWatch();
     try {
       const position = latestPosition.current;
       await stopDeliveryTracking(token, position?.coords.latitude, position?.coords.longitude);
-      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null;
       if (wakeLock.current) await wakeLock.current.release().catch(() => {});
       setState("idle");
       setMessage("Location sharing stopped.");
       setAssignment((current) => current ? { ...current, tracking_active: false } : current);
+      setCurrentLocation(null);
+      setLastUpdate(null);
       setShowCompletedPrompt(false);
     } catch (error) {
       setState("error");
@@ -211,7 +232,7 @@ export function DeliveryShare() {
   const driverPoint = currentLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null;
   const customerPoint = hasCustomerLocation ? { lat: assignment.customer_latitude!, lng: assignment.customer_longitude! } : null;
   const phone = assignment.customer_mobile?.replace(/[^\d+]/g, "") || null;
-  const isSharing = state === "sharing";
+  const isSharing = state === "sharing" && trackingEnabledRef.current;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
