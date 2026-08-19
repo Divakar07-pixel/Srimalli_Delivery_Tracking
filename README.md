@@ -1,257 +1,939 @@
-# Srimalli Food Product — Delivery Tracking System
+# 🚚 Srimalli Food Product — Delivery Tracking System
 
-A small-business delivery tracking application for **Srimalli Food Product**.
-One admin records orders as they arrive at the hub, updates delivery status,
-and messages customers on WhatsApp. Customers track their own order by
-mobile number or invoice number — no account needed.
+> A lightweight, secure, mobile-first delivery management and customer order-tracking platform built for **Srimalli Food Product**.
 
-This is intentionally **not** a courier/fleet platform. There is one
-delivery person, one hub, and no driver accounts, GPS tracking, or bidding.
+[![React](https://img.shields.io/badge/React-18%2B-61DAFB?logo=react\&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5%2B-3178C6?logo=typescript\&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-7%2B-646CFF?logo=vite\&logoColor=white)](https://vitejs.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase\&logoColor=white)](https://supabase.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3%2B-06B6D4?logo=tailwindcss\&logoColor=white)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**Live Application:**
 https://divakar07-pixel.github.io/Srimalli_Delivery_Tracking/
 
 ---
 
-## Features
+## 📌 Overview
 
-- **Public tracking** — customers search by mobile number or invoice/order ID, no login. Multiple orders for the same mobile number are all shown.
-- **Two ways to create an order** — capture/upload a bill photo or PDF, or enter details manually. Both are always available; scanning never blocks order creation.
-- **Bill scanning architecture** — "Scanning Bill..." with an immediate "Enter Details Manually" escape hatch, a timeout fallback, a failure fallback, and an editable "Review Bill Details" screen before anything saves. See [OCR integration](#ocr-integration) below — a real OCR provider isn't wired in by default.
-- **Dynamic, unlimited products per order** — no hardcoded product list. Admin types product names freely; quantity × price auto-calculates, and the invoice grand total can be overridden.
-- **Delivery timeline** — Order Created → Supplier Dispatched → Arrived at Hub → Out for Delivery → Delivered (+ Cancelled), with timestamps, shown to both admin and customers.
-- **WhatsApp click-to-chat** — free, no paid API. Auto-generated, editable message per status, opens `wa.me` with the message pre-filled.
-- **Admin dashboard** — order counts by status, today's orders, quick actions.
-- **Orders list** — search, status filters, date filters, pagination.
-- **Order detail** — quick status buttons, edit items/notes/expected delivery, delete, invoice view/download, call, WhatsApp.
-- **Settings** — company name, logo, business contact info, WhatsApp templates, theme.
-- **Security** — Postgres Row Level Security locks every table to the authenticated admin. Public tracking goes exclusively through narrow, masked RPC functions — customer mobile numbers are masked, addresses are never exposed publicly, and the invoice storage bucket is private (accessed via a signed URL from an Edge Function that verifies the order reference first).
-- **Mobile-first** — bottom nav on mobile, sidebar on desktop; camera capture for bills; installable as a PWA.
+**Srimalli Delivery Tracking** is a delivery management system designed specifically for the operational workflow of **Srimalli Food Product**.
+
+The system allows an administrator to:
+
+* Create and manage customer orders
+* Upload and review invoices
+* Track order status
+* Manage delivery information
+* Generate customer tracking references
+* Share order updates through WhatsApp
+* Monitor delivery progress from a central dashboard
+
+Customers do not need to create an account.
+
+They can simply use their **mobile number or invoice/order reference** to view their order and delivery timeline.
+
+### 🎯 Design Philosophy
+
+This application is intentionally designed for a **small-business delivery workflow**, rather than a large courier or fleet-management platform.
+
+It currently operates around:
+
+* One business
+* One delivery hub
+* One delivery person
+* Admin-controlled order management
+* Customer self-service tracking
+
+There are **no driver accounts, driver bidding, fleet assignment, or complex courier-management features**.
 
 ---
 
-## Tech Stack
+## ✨ Key Features
 
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS, React Router, React Hook Form, Zod, Lucide Icons, Framer Motion
-- **Backend:** Supabase (PostgreSQL, Auth, Storage, Row Level Security, one Edge Function)
-- **Hosting:** GitHub (source), Vercel (frontend), Supabase (backend) — all usable on free tiers to start
+### 👤 Customer Tracking
+
+Customers can track their orders without logging in.
+
+* Search using mobile number or invoice/order reference
+* View multiple orders associated with a mobile number
+* View delivery status
+* View delivery timeline
+* View order information
+* Access invoice securely
+* No customer account required
 
 ---
 
-## Project Structure
+### 📦 Order Management
 
+Administrators can create and manage orders from the admin panel.
+
+**Order creation supports:**
+
+* Manual entry
+* Bill/invoice image upload
+* PDF invoice upload
+* Multiple products per order
+* Custom product names
+* Quantity and price calculation
+* Editable invoice totals
+* Customer information
+* Delivery notes
+* Expected delivery information
+
+The system does not depend on a predefined product catalogue.
+
+---
+
+### 🧾 Invoice Management
+
+Invoices can be attached directly to orders.
+
+Supported formats include:
+
+* JPG
+* PNG
+* WEBP
+* PDF
+
+Invoices are stored inside a **private Supabase Storage bucket**.
+
+Customers never receive direct public access to the storage bucket.
+
+---
+
+### 📍 Delivery Timeline
+
+Every order follows a clear delivery lifecycle:
+
+```text
+Order Created
+      ↓
+Supplier Dispatched
+      ↓
+Arrived at Hub
+      ↓
+Out for Delivery
+      ↓
+Delivered
 ```
+
+Orders can also be marked:
+
+```text
+Cancelled
+```
+
+Every status change is recorded with a timestamp and displayed through the customer tracking timeline.
+
+---
+
+### 📱 WhatsApp Integration
+
+The system provides WhatsApp click-to-chat functionality without requiring a paid WhatsApp API.
+
+Administrators can:
+
+* Generate status-specific messages
+* Edit messages before sending
+* Open WhatsApp directly
+* Contact customers from the order page
+
+The system uses the standard:
+
+```text
+wa.me
+```
+
+click-to-chat mechanism.
+
+---
+
+### 📊 Admin Dashboard
+
+The dashboard provides an operational overview of current orders.
+
+Includes:
+
+* Order statistics
+* Status counts
+* Today's orders
+* Quick actions
+* Recent activity
+* Order management shortcuts
+
+---
+
+### 🔎 Advanced Order Search
+
+Administrators can search and filter orders using:
+
+* Order/invoice reference
+* Customer information
+* Delivery status
+* Date
+* Pagination
+
+---
+
+### ⚙️ Settings
+
+Business settings can be managed from the admin panel.
+
+Includes:
+
+* Company name
+* Company logo
+* Business contact information
+* WhatsApp message templates
+* Theme settings
+
+---
+
+### 📱 Mobile-First Design
+
+The application is designed for use from both desktop and mobile devices.
+
+Mobile experience includes:
+
+* Responsive layouts
+* Mobile navigation
+* Camera-based invoice capture
+* Touch-friendly controls
+* PWA support
+
+---
+
+## 🔐 Security Architecture
+
+Security is a major part of the application's architecture.
+
+### Row Level Security
+
+Supabase PostgreSQL uses **Row Level Security (RLS)** to protect application data.
+
+Administrative database operations are restricted to authenticated users with the appropriate admin role.
+
+### Public Tracking
+
+Customer tracking does **not** expose direct database access.
+
+Instead, public tracking uses restricted RPC functions that expose only the information required by the tracking interface.
+
+Sensitive information such as:
+
+* Full customer mobile numbers
+* Customer addresses
+* Internal database records
+
+is not exposed through the public tracking interface.
+
+### Private Invoice Storage
+
+Invoices are stored in a private storage bucket.
+
+Customer invoice access follows this flow:
+
+```text
+Customer
+   ↓
+Tracking Reference
+   ↓
+Edge Function
+   ↓
+Reference Verification
+   ↓
+Signed URL
+   ↓
+Private Invoice
+```
+
+The Edge Function verifies the order reference before generating a temporary signed URL.
+
+### ⚠️ Environment Variables
+
+Never commit sensitive credentials to GitHub.
+
+Frontend environment variables should contain only the Supabase project URL and public/publishable key.
+
+**Never expose:**
+
+```text
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+inside frontend code.
+
+---
+
+# 🛠️ Technology Stack
+
+| Layer           | Technology              |
+| --------------- | ----------------------- |
+| Frontend        | React + TypeScript      |
+| Build Tool      | Vite                    |
+| Styling         | Tailwind CSS            |
+| Routing         | React Router            |
+| Forms           | React Hook Form + Zod   |
+| UI Icons        | Lucide                  |
+| Animations      | Framer Motion           |
+| Backend         | Supabase                |
+| Database        | PostgreSQL              |
+| Authentication  | Supabase Auth           |
+| Storage         | Supabase Storage        |
+| Server Logic    | Supabase Edge Functions |
+| Hosting         | GitHub Pages / Vercel   |
+| Version Control | Git + GitHub            |
+
+---
+
+# 🏗️ Architecture
+
+```text
+                    ┌─────────────────────┐
+                    │      Customer       │
+                    │  Mobile / Desktop   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   Public Tracking   │
+                    │   React + Vite      │
+                    └──────────┬──────────┘
+                               │
+                         Restricted RPC
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │      Supabase       │
+                    │    PostgreSQL       │
+                    └─────────────────────┘
+
+
+                    ┌─────────────────────┐
+                    │       Admin         │
+                    │  Authenticated User │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    Admin Portal     │
+                    │ React + TypeScript  │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+             ┌─────────────────┼─────────────────┐
+             │                 │                 │
+             ▼                 ▼                 ▼
+       PostgreSQL          Storage          Edge Functions
+         + RLS            Invoices         Secure Access
+```
+
+---
+
+# 📂 Project Structure
+
+```text
 src/
-  components/    # UI primitives + feature components (orders, tracking, invoices, layout)
-  pages/
-    public/      # Landing, Track, TrackDetail — no auth
-    admin/       # Login, Dashboard, Orders, OrderDetail, AddOrder, Settings — auth required
-  services/      # All Supabase calls live here (orders, invoices, tracking, auth, settings, whatsapp, ocr)
-  hooks/         # useAuth, useToast, useDebounce, useThemeSync
-  types/         # Database + domain types
-  constants/     # Status labels/colors/flow
+├── components/
+│   ├── orders/
+│   ├── tracking/
+│   ├── invoices/
+│   └── layout/
+│
+├── pages/
+│   ├── public/
+│   │   ├── Landing
+│   │   ├── Track
+│   │   └── TrackDetail
+│   │
+│   └── admin/
+│       ├── Login
+│       ├── Dashboard
+│       ├── Orders
+│       ├── OrderDetail
+│       ├── AddOrder
+│       └── Settings
+│
+├── services/
+│   ├── orders
+│   ├── invoices
+│   ├── tracking
+│   ├── auth
+│   ├── settings
+│   ├── whatsapp
+│   └── ocr
+│
+├── hooks/
+├── types/
+└── constants/
+
 supabase/
-  migrations/    # Run in order: 0001 schema → 0002 RLS → 0003 tracking RPCs → 0004 storage
-  functions/
-    get-invoice-url/   # Edge Function: verifies an order reference, returns a signed invoice URL
+├── migrations/
+│   ├── 0001_schema
+│   ├── 0002_rls
+│   ├── 0003_tracking_rpcs
+│   ├── 0004_storage
+│   └── 0005_admin_profiles_and_hardened_rls
+│
+├── functions/
+│   └── get-invoice-url/
+│
+├── VERIFY_DATABASE.sql
+└── FIRST_ADMIN_SETUP.sql
 ```
 
 ---
 
-## Local Setup
+# 🚀 Getting Started
 
-### 1. Prerequisites
+## Prerequisites
 
-- Node.js 22+
-- A free [Supabase](https://supabase.com) account
-- The [Supabase CLI](https://supabase.com/docs/guides/cli) (`npm install -g supabase`) for running migrations and deploying the Edge Function
+Install the following:
 
-### 2. Clone and install
+* Node.js 22+
+* npm
+* Supabase account
+* Supabase CLI
+
+Install Supabase CLI:
 
 ```bash
-git clone <your-repo-url> srimalli-delivery
-cd srimalli-delivery
+npm install -g supabase
+```
+
+---
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/Divakar07-pixel/Srimalli_Delivery_Tracking.git
+
+cd Srimalli_Delivery_Tracking
+```
+
+---
+
+## 2. Install Dependencies
+
+```bash
 npm install
 ```
 
-### 3. Create a Supabase project
+---
 
-1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New Project**.
-2. Once created, go to **Project Settings → API** and copy the **Project URL** and **anon public key**.
+## 3. Configure Environment Variables
 
-### 4. Configure environment variables
+Create a `.env` file:
 
-```bash
-cp .env.example .env
-```
-
-Fill in `.env`:
-
-```
+```env
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-public-key
+VITE_SUPABASE_ANON_KEY=your-public-or-anon-key
 ```
 
-### 5. Run database migrations
+Do not commit `.env` to GitHub.
 
-Link the CLI to your project (find `<project-ref>` in your Supabase dashboard URL):
+---
+
+# 🗄️ Supabase Setup
+
+Create a new Supabase project.
+
+Then link the local project:
 
 ```bash
 supabase login
+
 supabase link --project-ref <project-ref>
+```
+
+Run the database migrations:
+
+```bash
 supabase db push
 ```
 
-This runs all four migrations in `supabase/migrations/` — schema, RLS policies, tracking RPC functions, and storage buckets, in order.
+Migrations should be executed in order:
 
-> **Prefer the dashboard?** Open **SQL Editor** in Supabase and run each file in `supabase/migrations/` manually, in filename order (0001 → 0004).
+```text
+0001 → 0002 → 0003 → 0004 → 0005
+```
 
-### 6. Deploy the Edge Function
+For manual setup, the migration files can also be executed from:
+
+**Supabase Dashboard → SQL Editor**
+
+---
+
+# 👨‍💼 Create the First Admin
+
+Create the initial user through:
+
+**Supabase Dashboard → Authentication → Users**
+
+After creating the Auth user, run:
+
+```text
+supabase/FIRST_ADMIN_SETUP.sql
+```
+
+with the required placeholders configured.
+
+The application intentionally does not provide public signup.
+
+---
+
+# 📄 Invoice Edge Function
+
+Deploy the invoice access function:
 
 ```bash
 supabase functions deploy get-invoice-url
 ```
 
-This function is what lets customers view/download their bill without the storage bucket being public. It uses the service role key automatically injected by Supabase — you don't need to set anything manually.
+The function:
 
-### 7. Create your admin account
+1. Receives an order reference
+2. Validates the order
+3. Verifies invoice ownership/reference
+4. Generates a signed URL
+5. Returns temporary access to the invoice
 
-Supabase Auth is used for the single admin login. In the dashboard, go to **Authentication → Users → Add user** and create yourself an account with an email and password. That's it — this app doesn't have a public signup flow, by design.
+---
 
-### 8. Run the app
+# ▶️ Run Locally
+
+Start the development server:
 
 ```bash
 npm run dev
 ```
 
-Visit `http://localhost:5173` for the public tracking site, and `http://localhost:5173/admin/login` to sign in as admin.
+The application will normally be available at:
 
----
-
-## OCR Integration
-
-Bill scanning ships as a **working state machine with no OCR provider wired in** — every scan currently resolves to "failed" so the manual-entry path is exercised by default, exactly per spec ("bill capture and manual entry are equal options; never force OCR").
-
-To wire up a real provider (Google Cloud Vision, AWS Textract, an LLM vision call, etc.):
-
-1. Create a new Edge Function, e.g. `supabase functions deploy scan-bill`, that accepts the uploaded file, calls your OCR provider (keep the API key server-side as a Supabase secret — never in frontend code), and returns fields matching `ExtractedBillData` in `src/services/ocr.ts`.
-2. Update `runOcr()` in `src/services/ocr.ts` to call that function instead of the stub — the commented-out example in that file shows the expected shape.
-
-Everything downstream (timeout handling, partial-success handling, the editable review screen, manual fallback) already works and doesn't need to change.
-
----
-
-## Deploying to GitHub + Vercel
-
-### GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<you>/<repo>.git
-git push -u origin main
+```text
+http://localhost:5173
 ```
 
-### Vercel
+Admin login:
 
-1. Go to [vercel.com/new](https://vercel.com/new) and import your GitHub repo.
-2. Framework preset: **Vite**.
-3. Add environment variables (same as your `.env`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-4. Deploy.
-
-`vercel.json` is already configured to rewrite all routes to `index.html`, so refreshing on `/admin/orders` or `/track/ABC123` will not 404.
-
-### GitHub Actions (optional but included)
-
-`.github/workflows/ci.yml` runs lint, typecheck, and build on every push/PR. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as repository secrets (**Settings → Secrets and variables → Actions**) if you want the build step to succeed in CI.
-
----
-
-## Running Locally — Commands
-
-```bash
-npm run dev        # start dev server
-npm run lint        # eslint
-npm run typecheck   # tsc --noEmit
-npm run build        # production build (also type-checks)
-npm run preview      # preview the production build locally
+```text
+http://localhost:5173/admin/login
 ```
 
 ---
 
-## App Icons for PWA
+# 🧪 Development Commands
 
-`public/manifest.json` references `/icons/icon-192.png`, `/icons/icon-512.png`, and a maskable 512px icon. These aren't included — generate them from your actual logo (e.g. with [realfavicongenerator.net](https://realfavicongenerator.net)) and drop them into `public/icons/`.
+```bash
+npm run dev
+```
+
+Start development server.
+
+```bash
+npm run lint
+```
+
+Run ESLint.
+
+```bash
+npm run typecheck
+```
+
+Run TypeScript checks.
+
+```bash
+npm run build
+```
+
+Create production build.
+
+```bash
+npm run preview
+```
+
+Preview the production build locally.
 
 ---
 
-## Troubleshooting
+# 🤖 OCR / Bill Scanning
 
-**"Missing VITE_SUPABASE_URL..." in the browser console** — you haven't created `.env` from `.env.example`, or forgot to restart `npm run dev` after adding it.
+The application includes the complete bill-scanning workflow architecture.
 
-**Tracking search always says "No matching orders"** — check that migrations `0002` and `0003` ran successfully (RLS + RPC functions). Without them, the `anon` role has zero table access by design, and the RPC functions are the only path to public data.
+The workflow supports:
 
-**"Unable to retrieve invoice" on the tracking page** — the `get-invoice-url` Edge Function isn't deployed, or the order has no invoice on file. Check `supabase functions logs get-invoice-url` for details.
+```text
+Upload / Capture Bill
+        ↓
+Scanning
+        ↓
+OCR Processing
+        ↓
+Review Extracted Data
+        ↓
+Edit if Required
+        ↓
+Save Order
+```
 
-**Admin login fails** — confirm you created a user under **Authentication → Users** in the Supabase dashboard; there's no public signup route.
+If OCR fails:
 
-**Refreshing `/admin/orders` on Vercel gives a 404** — check that `vercel.json` was deployed (it's in the repo root) and that the Vercel project framework preset is Vite, not "Other."
+```text
+OCR Failure
+     ↓
+Manual Entry
+```
 
-**Duplicate invoice number warning won't go away** — invoice numbers must be unique across all orders; check the Orders list search for the existing one.
+The manual-entry option is always available.
+
+### Current OCR Architecture
+
+The frontend contains the OCR integration layer, but a production OCR provider is not required for the application to operate.
+
+A provider such as:
+
+* Google Cloud Vision
+* AWS Textract
+* An LLM vision API
+* Another OCR service
+
+can be connected through a Supabase Edge Function.
+
+API credentials should remain server-side.
 
 ---
 
-## Database Schema Reference
+# 🌐 Deployment
 
-| Table | Purpose |
-|---|---|
-| `customers` | Name, mobile, address. Looked up/created by mobile number when an order is saved. |
-| `orders` | One row per order — status, dates, totals, tracking ID, notes. |
-| `order_items` | Line items per order. No product master table — product names live directly on each line, by design, so any product works without code changes. |
-| `invoices` | Bill/invoice file metadata; the file itself lives in the private `invoices` storage bucket. |
-| `order_status_history` | Auto-logged on every status change via a database trigger — powers the tracking timeline. |
-| `settings` | Single-row table for company name, logo, contact info, WhatsApp templates, theme. |
+## GitHub Pages
+
+The repository includes a GitHub Actions deployment workflow.
+
+In GitHub:
+
+```text
+Repository
+   ↓
+Settings
+   ↓
+Pages
+   ↓
+Source: GitHub Actions
+```
+
+Configure repository secrets:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+The GitHub Pages build uses:
+
+```text
+/Srimalli_Delivery_Tracking/
+```
+
+as its base path.
+
+### Important
+
+GitHub Pages is static hosting and does not provide SPA server-side route rewriting.
+
+Therefore, direct refreshes of nested routes such as:
+
+```text
+/admin/orders
+```
+
+may not work correctly on GitHub Pages.
+
+For complete SPA deep-link support, Vercel is recommended.
 
 ---
 
-## Production Deployment
+# ▲ Vercel Deployment
 
-### 1. Supabase setup
+Import the GitHub repository into Vercel.
 
-1. Create or select the Supabase project, then copy its Project URL and anon/publishable key into local `.env` using `.env.example` as the template. Never expose a service-role key to Vite or GitHub Pages.
-2. Run the existing migrations in order, including `0005_admin_profiles_and_hardened_rls.sql`. The first four migrations create the delivery schema, public tracking RPCs, and private invoice storage; migration 0005 adds role-based admin access. Run [VERIFY_DATABASE.sql](supabase/VERIFY_DATABASE.sql) afterward for read-only live schema, RLS, index, constraint, and bucket checks.
-3. Deploy the invoice URL function: `supabase functions deploy get-invoice-url`.
-4. In Authentication > URL Configuration, add your production URLs, including `https://divakar07-pixel.github.io/Srimalli_Delivery_Tracking/` and the Vercel URL. The password-reset redirect must be allowed.
-5. Create the first Auth user through Authentication > Users, then run [FIRST_ADMIN_SETUP.sql](supabase/FIRST_ADMIN_SETUP.sql) in SQL Editor after replacing its placeholders. Direct inserts into `auth.users` are intentionally avoided because Supabase Auth manages password hashing and identities.
+Use:
 
-The `invoices` bucket is private and accepts JPG, PNG, WEBP, and PDF files up to 15 MB. The public `branding` bucket is limited to logo assets. Only explicit `profiles.role = 'admin'` users receive CRUD access; public users use the existing narrow tracking RPCs only.
+```text
+Framework: Vite
+```
 
-### 2. GitHub Pages
+Configure:
 
-The repository includes `.github/workflows/deploy-pages.yml`. In GitHub, open Settings > Pages and set Source to **GitHub Actions**. Add these repository secrets:
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+Do not expose service-role credentials.
 
-Each push to `main` validates the app and deploys a build with base path `/Srimalli_Delivery_Tracking/`. GitHub Pages is static hosting, so direct deep-link refreshes (for example `/admin/orders`) cannot be rewritten to the Vite entry point. Share the root URL and let React navigation handle app routes, or deploy the customer/admin SPA to Vercel for full refresh support.
+The included `vercel.json` handles SPA route rewriting.
 
-### 3. Vercel
+---
 
-Import this repository in Vercel, choose the **Vite** preset, and configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Do not set `VITE_DEPLOY_TARGET`; the app then builds for `/`, and the included `vercel.json` supplies SPA rewrites for direct route refreshes.
+# 🔄 Production Verification
 
-### 4. Local production verification
+Before deploying:
 
 ```bash
 npm ci
-npm run lint
-npm run typecheck
-npm run build
 
-# Optional: verify the GitHub Pages base-path bundle locally
+npm run lint
+
+npm run typecheck
+
+npm run build
+```
+
+Optional GitHub Pages build verification:
+
+```bash
 VITE_DEPLOY_TARGET=github-pages npm run build
 ```
 
-## License
+---
 
-MIT — see `LICENSE`.
+# 🗃️ Database Schema
+
+| Table                  | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `customers`            | Customer information including name, mobile and address     |
+| `orders`               | Main order records, status, totals and tracking information |
+| `order_items`          | Products and quantities belonging to each order             |
+| `invoices`             | Invoice metadata and storage references                     |
+| `order_status_history` | Historical record of order status changes                   |
+| `settings`             | Business configuration and WhatsApp templates               |
+| `profiles`             | Authenticated admin profile and role information            |
+
+---
+
+# 🔐 Security Model
+
+```text
+                 Public User
+                     │
+                     ▼
+              Tracking Interface
+                     │
+                     ▼
+            Restricted RPC Functions
+                     │
+                     ▼
+               Masked Data
+```
+
+Administrative users:
+
+```text
+                 Admin
+                   │
+                   ▼
+              Supabase Auth
+                   │
+                   ▼
+            Admin Role Check
+                   │
+                   ▼
+              RLS Policies
+                   │
+                   ▼
+             Protected Tables
+```
+
+Invoice access:
+
+```text
+Customer
+   │
+   ▼
+Order Reference
+   │
+   ▼
+Edge Function
+   │
+   ▼
+Validation
+   │
+   ▼
+Signed URL
+   │
+   ▼
+Private Storage
+```
+
+---
+
+# 📱 Progressive Web App
+
+The application is structured as a PWA and supports installation on compatible devices.
+
+Required icons:
+
+```text
+public/icons/
+├── icon-192.png
+├── icon-512.png
+└── maskable-512.png
+```
+
+Generate production icons from the official Srimalli Food Product logo before deployment.
+
+---
+
+# 🛠️ Troubleshooting
+
+### Missing Supabase environment variables
+
+Check:
+
+```text
+.env
+```
+
+and restart the development server after changing environment variables.
+
+---
+
+### Tracking returns "No matching orders"
+
+Verify:
+
+```text
+0002 RLS migration
+0003 Tracking RPC migration
+```
+
+were successfully applied.
+
+Public tracking intentionally does not have unrestricted table access.
+
+---
+
+### Invoice cannot be retrieved
+
+Check:
+
+```bash
+supabase functions logs get-invoice-url
+```
+
+Also verify:
+
+* Edge Function is deployed
+* Invoice exists
+* Invoice reference is correct
+* Storage bucket exists
+
+---
+
+### Admin login does not work
+
+Verify that the user exists under:
+
+```text
+Supabase
+→ Authentication
+→ Users
+```
+
+Then verify the user's admin profile/role.
+
+---
+
+### Vercel route returns 404
+
+Confirm:
+
+* Vercel framework is set to **Vite**
+* `vercel.json` exists in the repository root
+* The latest commit was deployed
+
+---
+
+# 📈 Future Improvements
+
+Potential future enhancements include:
+
+* 📍 Customer location sharing
+* 🗺️ Google Maps navigation integration
+* 🚚 Live delivery location tracking
+* 📲 Push notifications
+* 🤖 Production OCR integration
+* 📊 Advanced delivery analytics
+* 📦 Product inventory management
+* 🧾 Automated invoice generation
+* 💬 Automated WhatsApp Business integration
+* 📱 Enhanced PWA offline capabilities
+
+These features are intentionally separate from the current small-business workflow.
+
+---
+
+# 🤝 Contributing
+
+Contributions, suggestions, and improvements are welcome.
+
+### Development Workflow
+
+```bash
+git checkout -b feature/your-feature
+
+npm install
+
+npm run lint
+
+npm run typecheck
+
+npm run build
+```
+
+Commit your changes:
+
+```bash
+git add .
+
+git commit -m "feat: add your feature"
+```
+
+Push the branch:
+
+```bash
+git push origin feature/your-feature
+```
+
+Then open a Pull Request.
+
+---
+
+# 📄 License
+
+This project is licensed under the **MIT License**.
+
+See [`LICENSE`](LICENSE) for details.
+
+---
+
+# 👨‍💻 Author
+
+**Divakar R**
+
+GitHub:
+https://github.com/Divakar07-pixel
+
+Portfolio:
+https://divakar07-pixel.github.io/Portfolio/
+
+---
+
+# ⭐ Project
+
+If you find this project useful, consider giving the repository a ⭐ on GitHub.
+
+**Srimalli Food Product — Delivery Tracking System**
+
+Built with ❤️ using React, TypeScript, Vite and Supabase.
