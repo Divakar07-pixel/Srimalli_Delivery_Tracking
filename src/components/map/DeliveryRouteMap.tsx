@@ -45,6 +45,7 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const hasInitialViewportRef = useRef(false);
   const [resolvedCustomer, setResolvedCustomer] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<LatLng[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,6 +109,7 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
       map.remove();
       mapRef.current = null;
       layerGroupRef.current = null;
+      hasInitialViewportRef.current = false;
     };
   }, []);
 
@@ -146,9 +148,12 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
       }).addTo(layerGroup);
     }
 
-    const latLngs = allPoints.map((p) => L.latLng(p.lat, p.lng));
-    const bounds = L.latLngBounds(latLngs);
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+    if (!hasInitialViewportRef.current) {
+      const latLngs = allPoints.map((p) => L.latLng(p.lat, p.lng));
+      const bounds = L.latLngBounds(latLngs);
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      hasInitialViewportRef.current = true;
+    }
   }, [points, markers, route, routeStartKey, effectiveCustomer, driver]);
 
   const handleRefresh = async () => {
