@@ -266,14 +266,16 @@ export function DeliveryShare() {
               <p className="font-semibold">{assignment.customer_name}</p>
               {phone ? <a href={`tel:${phone}`} className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"><Phone className="h-4 w-4" />{assignment.customer_mobile}</a> : <p className="mt-1 text-sm text-muted-foreground">Phone number unavailable</p>}
               <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{assignment.customer_address || "Saved delivery location"}</p>
+              <Button className="mt-3 h-11 w-full" disabled={!hasCustomerLocation} onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}><MapPin className="h-4 w-4" /> OPEN CUSTOMER LOCATION IN GOOGLE MAPS</Button>
+              {!hasCustomerLocation && <p className="mt-2 text-xs text-warning">Customer coordinates are not saved for this order.</p>}
             </div>
 
-            {!isSharing && <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground"><p className="font-medium text-foreground">Start the delivery first</p><p className="mt-1">After GPS starts, this page will show your live position against the saved customer location.</p></div>}
+            {!isSharing && <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground"><p className="font-medium text-foreground">Start the delivery first</p><p className="mt-1">After GPS starts, the map will show your live position against the saved customer location.</p></div>}
 
-            {isSharing && <div className="overflow-hidden rounded-lg border border-border">
-              <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs"><span className="font-medium">Customer location & live route</span><span className="text-muted-foreground">Leaflet · live GPS</span></div>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-center justify-between bg-muted/40 px-3 py-2 text-xs"><span className="font-medium">Live delivery route</span><span className="text-muted-foreground">Leaflet · {isSharing ? "live GPS" : "customer location"}</span></div>
               {hasCustomerLocation ? <DeliveryRouteMap shop={null} customer={customerPoint} driver={driverPoint} height={280} /> : <div className="p-4 text-sm text-muted-foreground">No exact customer coordinates were saved for this order. Confirm the customer's location before navigating.</div>}
-            </div>}
+            </div>
 
             <div className="grid gap-2">
               {!isSharing ? <Button className="h-12 w-full" onClick={startSharing} disabled={isBusy}><Power className="h-4 w-4" />{state === "starting" ? "Starting GPS…" : "START TRACKING"}</Button> : <Button variant="destructive" className="h-12 w-full" onClick={stopSharing} disabled={isBusy}><Power className="h-4 w-4" />STOP TRACKING</Button>}
