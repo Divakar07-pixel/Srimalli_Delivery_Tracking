@@ -8,15 +8,18 @@ self.addEventListener("push", (event) => {
     badge: data.badge || "./icons/icon-192.png",
     tag: data.tag || "srimalli-delivery-arrival",
     renotify: false,
-    data: { url: data.url || "/" },
+    data: { trackingId: data.trackingId || "" },
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
   event.waitUntil((async () => {
+    const base = new URL(self.registration.scope);
+    const trackingId = event.notification.data?.trackingId;
+    if (trackingId) base.pathname = `${base.pathname.replace(/\/$/, "")}/track/${encodeURIComponent(trackingId)}`;
+    const targetUrl = base.href;
     const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of clientsList) {
       if ("focus" in client) {
