@@ -66,6 +66,13 @@ export async function updateDeliveryPartnerLocation(token: string, latitude: num
     p_accuracy_m: accuracyM ?? null,
   });
   if (error) throw new Error("Unable to share your location. Please try again.");
+
+  // The driver is the active GPS source, so arrival detection works even when
+  // the customer has closed the tracking page. The Edge Function claims the
+  // notification atomically, preventing duplicate pushes.
+  void supabase.functions.invoke("check-delivery-arrival", {
+    body: { token, latitude, longitude },
+  }).catch(() => {});
 }
 
 export async function stopDeliveryTracking(token: string, latitude?: number, longitude?: number) {
