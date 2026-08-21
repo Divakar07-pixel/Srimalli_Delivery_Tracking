@@ -6,6 +6,7 @@ import { useThemeSync } from "@/hooks/useThemeSync";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AdminShell } from "@/components/layout/AdminShell";
 import { BackButton } from "@/components/layout/BackButton";
+import { DeliveryNotificationPrompt } from "@/components/tracking/DeliveryNotificationPrompt";
 
 // Public pages load eagerly — this is the surface most visitors hit first,
 // with no login, so it should be fast on a first load.
@@ -59,6 +60,7 @@ function App() {
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <GitHubPagesRedirect />
           <BackButton />
+          <DeliveryNotificationPrompt />
           <Routes>
             {/* Public */}
             <Route path="/" element={<Landing />} />
