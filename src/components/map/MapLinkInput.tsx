@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { MapPin, CheckCircle2, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,20 +12,49 @@ interface MapLinkInputProps {
   onChange: (value: string, coords: LatLng | null) => void;
   shop?: LatLng | null;
   placeholder?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**
- * A text field for capturing a Google Maps share/pin link.
- * Live-parses the @lat,lng pair, shows a validation hint, and (when a shop is
- * supplied) a small inline distance + map preview.
+ * Customer location can be supplied by Google Maps link OR by manual latitude
+ * and longitude. Manual coordinates are used when the link cannot be resolved.
  */
-export function MapLinkInput({ value, onChange, shop, placeholder }: MapLinkInputProps) {
-  const coords = parseCoordinates(value);
-  const distance = coords && shop ? haversineKm(shop, coords) : null;
+export function MapLinkInput({ value, onChange, shop, placeholder, latitude, longitude }: MapLinkInputProps) {
+  const parsedCoords = parseCoordinates(value);
+  const initialManualLat = latitude != null ? String(latitude) : "";
+  const initialManualLng = longitude != null ? String(longitude) : "";
+  const [manualLatitude, setManualLatitude] = useState(initialManualLat);
+  const [manualLongitude, setManualLongitude] = useState(initialManualLng);
   const [dirty, setDirty] = useState(false);
 
+  useEffect(() => {
+    setManualLatitude(latitude != null ? String(latitude) : "");
+    setManualLongitude(longitude != null ? String(longitude) : "");
+  }, [latitude, longitude]);
+
+  const manualLat = Number.parseFloat(manualLatitude);
+  const manualLng = Number.parseFloat(manualLongitude);
+  const manualCoords = Number.isFinite(manualLat) && Number.isFinite(manualLng)
+    && manualLat >= -90 && manualLat <= 90 && manualLng >= -180 && manualLng <= 180
+    ? { lat: manualLat, lng: manualLng }
+    : null;
+  const coords = parsedCoords ?? manualCoords;
+  const distance = coords && shop ? haversineKm(shop, coords) : null;
+
   const isGoogleMapsUrl = isGoogleMapsLink(value);
-  const isInvalidInput = value.trim().length > 0 && !coords && !isGoogleMapsUrl;
+  const isInvalidInput = value.trim().length > 0 && !parsedCoords && !isGoogleMapsUrl && !manualCoords;
+
+  const handleManualCoordinateChange = (nextLat: string, nextLng: string) => {
+    setManualLatitude(nextLat);
+    setManualLongitude(nextLng);
+    setDirty(true);
+    const lat = Number.parseFloat(nextLat);
+    const lng = Number.parseFloat(nextLng);
+    const valid = Number.isFinite(lat) && Number.isFinite(lng)
+      && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    onChange(value, valid ? { lat, lng } : parsedCoords);
+  };
 
   return (
     <div className="space-y-1.5">
@@ -34,7 +63,9 @@ export function MapLinkInput({ value, onChange, shop, placeholder }: MapLinkInpu
         <Input
           value={value}
           onChange={(e) => {
-            onChange(e.target.value, parseCoordinates(e.target.value));
+            const nextValue = e.target.value;
+            const nextCoords = parseCoordinates(nextValue);
+            onChange(nextValue, nextCoords ?? manualCoords);
             setDirty(true);
           }}
           placeholder={placeholder ?? "https://maps.app.goo.gl/... or paste Google Maps link"}
@@ -42,17 +73,46 @@ export function MapLinkInput({ value, onChange, shop, placeholder }: MapLinkInpu
         />
       </div>
 
+      <p className="text-xs text-muted-foreground">Use a Google Maps link, or enter coordinates below if the link cannot be resolved.</p>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Latitude</label>
+          <Input
+            type="number"
+            step="any"
+            min="-90"
+            max="90"
+            value={manualLatitude}
+            onChange={(e) => handleManualCoordinateChange(e.target.value, manualLongitude)}
+            placeholder="e.g. 12.9249"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Longitude</label>
+          <Input
+            type="number"
+            step="any"
+            min="-180"
+            max="180"
+            value={manualLongitude}
+            onChange={(e) => handleManualCoordinateChange(manualLatitude, e.target.value)}
+            placeholder="e.g. 80.1000"
+          />
+        </div>
+      </div>
+
       {dirty && isInvalidInput && (
         <p className="flex items-center gap-1 text-xs text-destructive">
           <XCircle className="h-3.5 w-3.5" />
-          We couldn't detect coordinates. Use a Google Maps share/pin link.
+          We couldn't detect coordinates. Use a Google Maps link or valid latitude and longitude.
         </p>
       )}
 
-      {dirty && isGoogleMapsUrl && !coords && (
+      {dirty && isGoogleMapsUrl && !parsedCoords && !manualCoords && (
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-          Google Maps link accepted. This shortened link does not expose coordinates for a route preview.
+          Google Maps link accepted. If it cannot be resolved, use the latitude and longitude fields above.
         </p>
       )}
 
