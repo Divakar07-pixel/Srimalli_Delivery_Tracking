@@ -167,6 +167,14 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
     }
   };
 
+  const handleRecenter = () => {
+    const map = mapRef.current;
+    const allPoints = [...points, ...markers];
+    if (!map || allPoints.length === 0) return;
+    const bounds = L.latLngBounds(allPoints.map((point) => L.latLng(point.lat, point.lng)));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
+  };
+
   return (
     <div
       className={cn("relative w-full overflow-hidden rounded-lg border", className)}
@@ -183,6 +191,15 @@ export function DeliveryRouteMap({ shop, customer, customerMapUrl, driver, class
         className="absolute left-[48px] top-2 z-[1000] flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background/95 text-foreground shadow-md backdrop-blur-sm transition hover:bg-muted disabled:cursor-wait disabled:opacity-70"
       >
         <span className={refreshing ? "animate-spin" : ""}>↻</span>
+      </button>
+      <button
+        type="button"
+        onClick={handleRecenter}
+        aria-label="Recenter delivery map"
+        title="Recenter delivery map"
+        className="absolute left-[88px] top-2 z-[1000] flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background/95 text-foreground shadow-md backdrop-blur-sm transition hover:bg-muted"
+      >
+        <span aria-hidden="true">◎</span>
       </button>
     </div>
   );
