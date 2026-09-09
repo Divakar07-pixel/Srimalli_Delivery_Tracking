@@ -9,9 +9,6 @@ interface Props {
   history: TrackingTimelineEntry[];
 }
 
-// The customer/admin delivery timeline intentionally shows only the three
-// delivery milestones. Other order statuses remain available to the order
-// system and status controls; they are simply not displayed in this timeline.
 const DELIVERY_TIMELINE: OrderStatus[] = [
   "arrived_at_hub",
   "out_for_delivery",
@@ -21,11 +18,13 @@ const DELIVERY_TIMELINE: OrderStatus[] = [
 export function OrderTimeline({ currentStatus, history }: Props) {
   if (currentStatus === "cancelled") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-        <XCircle className="h-5 w-5 text-destructive" />
+      <div className="flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+          <XCircle className="h-5 w-5 text-destructive" />
+        </div>
         <div>
-          <p className="font-medium text-destructive">Order Cancelled</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="font-semibold text-destructive">Order Cancelled</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {history.length ? formatDateTime(history[history.length - 1].changed_at) : ""}
           </p>
         </div>
@@ -35,48 +34,46 @@ export function OrderTimeline({ currentStatus, history }: Props) {
 
   const currentIndex = DELIVERY_TIMELINE.indexOf(currentStatus);
   const timestampFor = (status: OrderStatus) => history.find((h) => h.new_status === status)?.changed_at;
+  const effectiveIndex = currentIndex < 0 ? -1 : currentIndex;
 
   return (
-    <div className="relative">
-      <ol className="flex flex-col gap-0 md:flex-row md:items-start md:justify-between md:gap-2">
-        {DELIVERY_TIMELINE.map((status, index) => {
-          const isComplete = currentIndex >= 0 && (index < currentIndex || (index === currentIndex && currentIndex === DELIVERY_TIMELINE.length - 1));
-          const isCurrent = index === currentIndex && !isComplete;
-          const isDone = currentIndex >= 0 && index <= currentIndex;
-          const ts = timestampFor(status);
+    <ol className="relative flex flex-col gap-0 sm:flex-row sm:items-start sm:justify-between">
+      {DELIVERY_TIMELINE.map((status, index) => {
+        const isDone = effectiveIndex >= 0 && index <= effectiveIndex;
+        const isCurrent = index === effectiveIndex;
+        const ts = timestampFor(status);
 
-          return (
-            <li key={status} className="relative flex flex-1 gap-3 pb-8 md:flex-col md:items-center md:gap-2 md:pb-0 md:text-center">
-              {index < DELIVERY_TIMELINE.length - 1 && (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute left-[15px] top-8 h-full w-0.5 md:left-1/2 md:top-4 md:h-0.5 md:w-full md:-translate-x-0",
-                    isDone && index < currentIndex ? "bg-primary" : "bg-border"
-                  )}
-                />
-              )}
+        return (
+          <li key={status} className="relative flex flex-1 gap-3 pb-8 last:pb-0 sm:flex-col sm:items-center sm:gap-2 sm:pb-0 sm:text-center">
+            {index < DELIVERY_TIMELINE.length - 1 && (
               <span
+                aria-hidden
                 className={cn(
-                  "z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold",
-                  isDone
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-muted-foreground",
-                  isCurrent && "ring-4 ring-primary/20"
+                  "absolute left-[15px] top-8 h-[calc(100%-8px)] w-0.5 sm:left-1/2 sm:top-4 sm:h-0.5 sm:w-full",
+                  isDone && index < effectiveIndex ? "bg-primary" : "bg-border"
                 )}
-              >
-                {isDone ? <Check className="h-4 w-4" /> : <Circle className="h-3 w-3" />}
-              </span>
-              <div className="md:mt-1">
-                <p className={cn("text-sm font-medium", isDone ? "text-foreground" : "text-muted-foreground")}>
-                  {STATUS_LABEL[status]}
-                </p>
-                <p className="text-xs text-muted-foreground">{ts ? formatDateTime(ts) : isCurrent ? "In progress" : ""}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+              />
+            )}
+            <span
+              className={cn(
+                "z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 bg-background text-xs font-bold transition-all",
+                isDone ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
+                isCurrent && "ring-4 ring-primary/15"
+              )}
+            >
+              {isDone ? <Check className="h-4 w-4" /> : <Circle className="h-3 w-3" />}
+            </span>
+            <div className="sm:mt-1">
+              <p className={cn("text-sm font-semibold", isDone ? "text-foreground" : "text-muted-foreground")}>
+                {STATUS_LABEL[status]}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {ts ? formatDateTime(ts) : isCurrent ? "In progress" : "Waiting"}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
