@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Package, PhoneCall, Search, Truck, MapPin, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, MapPin, Package, PhoneCall, Search, ShieldCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { getPublicSettings, type PublicSettings } from "@/services/tracking";
+
+const STEPS = [
+  { icon: Package, title: "Arrived at Hub", text: "Your order has reached our delivery hub." },
+  { icon: Truck, title: "Out for Delivery", text: "Our delivery person is on the way to you." },
+  { icon: CheckCircle2, title: "Delivered", text: "Your order has reached its destination." },
+];
 
 export function Landing() {
   const navigate = useNavigate();
@@ -12,7 +17,7 @@ export function Landing() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
 
   useEffect(() => {
-    getPublicSettings().then(setSettings);
+    getPublicSettings().then(setSettings).catch(() => {});
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -21,99 +26,114 @@ export function Landing() {
     navigate(`/track?query=${encodeURIComponent(query.trim())}`);
   };
 
+  const companyName = settings?.company_name ?? "Srimalli Food Product";
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
+    <div className="min-h-screen overflow-x-hidden bg-background">
+      <header className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           {settings?.logo_url ? (
-            <img src={settings.logo_url} alt="" className="h-9 w-9 rounded-md object-contain" />
+            <img src={settings.logo_url} alt="" className="h-10 w-10 rounded-xl object-contain" />
           ) : (
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-              SFP
-            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-foreground shadow-sm">SFP</div>
           )}
-          <span className="font-semibold">{settings?.company_name ?? "Srimalli Food Product"}</span>
-          <div className="ml-auto">
-            <Link to="/admin/login">
-              <Button variant="outline" size="sm">
-                Admin Login
-              </Button>
-            </Link>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{companyName}</p>
+            <p className="hidden text-[11px] text-muted-foreground sm:block">Delivery Tracking</p>
           </div>
+          <Link to="/admin/login" className="ml-auto">
+            <Button variant="ghost" size="sm">Admin Login</Button>
+          </Link>
         </div>
       </header>
 
-      <section className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Track Your Order</h1>
-        <p className="mt-3 text-muted-foreground">
-          Enter your mobile number or your order / invoice number to see where your order is.
-        </p>
+      <main>
+        <section className="relative border-b">
+          <div className="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pb-20 sm:pt-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                Simple, secure order tracking
+              </div>
+              <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
+                Know where your order is.
+              </h1>
+              <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
+                Track your delivery from our hub to your doorstep using your mobile number or order / invoice reference.
+              </p>
 
-        <form onSubmit={handleSearch} className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Mobile number or Invoice / Order ID"
-            className="h-12 text-base"
-          />
-          <Button type="submit" size="lg" className="sm:w-auto">
-            <Search className="h-4 w-4" />
-            Track Order
-          </Button>
-        </form>
-      </section>
+              <form onSubmit={handleSearch} className="mx-auto mt-8 flex max-w-xl flex-col gap-2 rounded-2xl border bg-card p-2 shadow-lg sm:flex-row">
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Mobile number or Order / Invoice ID"
+                  className="h-12 border-0 bg-transparent px-4 text-base shadow-none focus-visible:ring-0"
+                  aria-label="Mobile number or order reference"
+                />
+                <Button type="submit" size="lg" className="h-12 px-6">
+                  <Search className="h-4 w-4" />
+                  Track Order
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </form>
 
-      <section className="mx-auto max-w-5xl px-4 pb-16">
-        <h2 className="mb-6 text-center text-lg font-semibold">How Tracking Works</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <HowStep icon={Package} title="Order Recorded" description="We record your order once it reaches our hub." />
-          <HowStep icon={Truck} title="On Its Way" description="Our delivery person contacts you to confirm your location." />
-          <HowStep icon={CheckCircle2} title="Delivered" description="Track live status right up to delivery, any time." />
-        </div>
-      </section>
-
-      <section className="border-t bg-card">
-        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 px-4 py-12 sm:grid-cols-3">
-          <Benefit icon={Search} title="Simple Tracking" description="No account or login needed — just your mobile or invoice number." />
-          <Benefit icon={MapPin} title="Real Updates" description="See exactly which stage your order is at, with timestamps." />
-          <Benefit icon={PhoneCall} title="Direct Contact" description="Reach us any time about your order." />
-        </div>
-      </section>
-
-      {(settings?.business_phone || settings?.business_address) && (
-        <section className="mx-auto max-w-5xl px-4 py-10 text-center text-sm text-muted-foreground">
-          {settings?.business_phone && <p>Contact: {settings.business_phone}</p>}
-          {settings?.business_address && <p className="mt-1">{settings.business_address}</p>}
+              <div className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-primary" /> No customer account needed</span>
+                <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-primary" /> Live delivery updates</span>
+              </div>
+            </div>
+          </div>
         </section>
-      )}
 
-      <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} {settings?.company_name ?? "Srimalli Food Product"}. All rights reserved.
+        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+          <div className="mb-8">
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary">Your delivery journey</p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Three clear stages</h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">We keep the tracking experience focused on the actual delivery process.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {STEPS.map((step, index) => (
+              <div key={step.title} className="group relative rounded-2xl border bg-card p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className="mb-5 flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-primary">
+                    <step.icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-4xl font-bold text-muted-foreground/15">0{index + 1}</span>
+                </div>
+                <h3 className="font-semibold">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-y bg-card">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3 sm:px-6">
+            <Benefit icon={Search} title="Easy to find" text="Use your mobile number or order / invoice reference." />
+            <Benefit icon={MapPin} title="Clear status" text="See the current delivery stage and timestamps." />
+            <Benefit icon={PhoneCall} title="Need help?" text={settings?.business_phone ? `Contact us at ${settings.business_phone}.` : "Contact the business directly for delivery support."} />
+          </div>
+        </section>
+      </main>
+
+      <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-muted-foreground sm:px-6">
+        © {new Date().getFullYear()} {companyName}. All rights reserved.
       </footer>
     </div>
   );
 }
 
-function HowStep({ icon: Icon, title, description }: { icon: typeof Package; title: string; description: string }) {
+function Benefit({ icon: Icon, title, text }: { icon: typeof Search; title: string; text: string }) {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center gap-2 pt-6 text-center">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent">
-          <Icon className="h-5 w-5 text-accent-foreground" />
-        </div>
-        <p className="font-medium">{title}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Benefit({ icon: Icon, title, description }: { icon: typeof Package; title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 text-center sm:items-start sm:text-left">
-      <Icon className="h-5 w-5 text-primary" />
-      <p className="font-medium">{title}</p>
-      <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="flex items-start gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold">{title}</p>
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">{text}</p>
+      </div>
     </div>
   );
 }
