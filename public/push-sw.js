@@ -4,8 +4,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Srimalli Delivery";
   const options = {
     body: data.body || "Your delivery is nearby.",
-    icon: data.icon || "./icons/icon-192.png",
-    badge: data.badge || "./icons/icon-192.png",
+    icon: data.icon || "https://kxelijflylhzjfzpynhg.supabase.co/storage/v1/object/public/branding/logo-1785863913557.webp",
+    badge: data.badge || "https://kxelijflylhzjfzpynhg.supabase.co/storage/v1/object/public/branding/logo-1785863913557.webp",
     tag: data.tag || "srimalli-delivery-arrival",
     renotify: false,
     data: { trackingId: data.trackingId || "" },
