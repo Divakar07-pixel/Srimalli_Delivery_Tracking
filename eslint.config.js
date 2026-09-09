@@ -8,6 +8,16 @@ export default [
   { ignores: ["dist", "node_modules", "supabase/functions/**"] },
   js.configs.recommended,
   {
+    files: ["public/push-sw.js"],
+    languageOptions: {
+      globals: {
+        self: "readonly",
+        URL: "readonly",
+        clients: "readonly",
+      },
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       parser: tsParser,
