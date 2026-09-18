@@ -57,7 +57,7 @@ export function TrackDetail() {
   useEffect(() => {
     if (!order || order.status !== "out_for_delivery") return;
     const refreshLocation = () => getDeliveryPartnerLocation(reference).then(acceptPartner).catch(() => {});
-    const interval = window.setInterval(refreshLocation, 2_000);
+    const interval = window.setInterval(refreshLocation, 1_000);
     const unsubscribe = subscribeToDeliveryLocation(order.order_id, refreshLocation);
     refreshLocation();
     return () => { window.clearInterval(interval); unsubscribe(); };
