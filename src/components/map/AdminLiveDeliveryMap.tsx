@@ -48,7 +48,7 @@ export function AdminLiveDeliveryMap() {
   useEffect(() => {
     if (!order?.tracking_id || order.status !== "out_for_delivery") return;
     const refreshLocation = () => getDeliveryPartnerLocation(order.tracking_id).then(applyDriverLocation).catch(() => {});
-    const interval = window.setInterval(refreshLocation, 2_000);
+    const interval = window.setInterval(refreshLocation, 1_000);
     const unsubscribe = subscribeToDeliveryLocation(order.id, refreshLocation);
     refreshLocation();
     return () => { window.clearInterval(interval); unsubscribe(); };
