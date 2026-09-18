@@ -17,7 +17,7 @@ const timelineSteps = [
 
 const gpsOptions: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 };
 const MIN_SEND_DISTANCE_M = 5;
-const MAX_SEND_INTERVAL_MS = 10_000;
+const MAX_SEND_INTERVAL_MS = 1_000;
 const POOR_ACCURACY_M = 50;
 
 function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
