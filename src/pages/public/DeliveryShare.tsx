@@ -130,6 +130,8 @@ export function DeliveryShare() {
         if (error.code === error.PERMISSION_DENIED) {
           trackingEnabledRef.current = false;
           stopGpsWatch();
+          const position = latestPosition.current;
+          void stopDeliveryTracking(token, position?.coords.latitude, position?.coords.longitude).catch(() => {});
           setState("error");
           setMessage("Location access is required to share your live delivery location.");
         } else if (error.code === error.TIMEOUT) {
