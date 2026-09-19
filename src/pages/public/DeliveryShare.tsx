@@ -4,7 +4,7 @@ import { MapPin, Navigation, Phone, Power, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeliveryRouteMap } from "@/components/map/DeliveryRouteMap";
-import { getDeliveryAssignment, startDeliveryTracking, stopDeliveryTracking, updateDeliveryPartnerLocation, type DeliveryAssignment } from "@/services/tracking";
+import { getDeliveryAssignment, resolveDeliveryCoordinates, startDeliveryTracking, stopDeliveryTracking, updateDeliveryPartnerLocation, type DeliveryAssignment } from "@/services/tracking";
 
 type TrackingState = "idle" | "starting" | "sharing" | "stopping" | "error";
 type CurrentLocation = { latitude: number; longitude: number; accuracy: number | null };
@@ -50,11 +50,33 @@ export function DeliveryShare() {
 
   useEffect(() => {
     getDeliveryAssignment(token)
-      .then((data) => {
+      .then(async (data) => {
+        if (!data) {
+          setAssignment(null);
+          return;
+        }
+
+        // Some older orders have a Google Maps link but no coordinates yet.
+        // Resolve the exact coordinates before disabling the navigation button.
+        if ((data.customer_latitude == null || data.customer_longitude == null)
+          && (data.customer_map_link || data.delivery_location_url)) {
+          const coordinates = await resolveDeliveryCoordinates(
+            data.customer_map_link || data.delivery_location_url || ""
+          ).catch(() => null);
+
+          if (coordinates) {
+            data = {
+              ...data,
+              customer_latitude: coordinates.lat,
+              customer_longitude: coordinates.lng,
+            };
+          }
+        }
+
         setAssignment(data);
-        if (data?.status === "delivered" && data.tracking_active) setShowCompletedPrompt(true);
-        trackingEnabledRef.current = Boolean(data?.tracking_active);
-        if (data?.tracking_active) setState("sharing");
+        if (data.status === "delivered" && data.tracking_active) setShowCompletedPrompt(true);
+        trackingEnabledRef.current = Boolean(data.tracking_active);
+        if (data.tracking_active) setState("sharing");
       })
       .catch(() => setAssignment(null));
     return () => {
