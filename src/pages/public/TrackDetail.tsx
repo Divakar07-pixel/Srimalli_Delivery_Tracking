@@ -84,7 +84,10 @@ export function TrackDetail() {
     ? { lat: order.customer_latitude, lng: order.customer_longitude }
     : null;
   const driver = partner?.latitude != null && partner.longitude != null ? { lat: partner.latitude, lng: partner.longitude } : null;
-  const liveDriver = partner?.active === true ? driver : null;
+  const partnerLocationFresh = partner?.updated_at
+    ? Date.now() - new Date(partner.updated_at).getTime() <= 15_000
+    : false;
+  const liveDriver = partner?.active === true && partnerLocationFresh ? driver : null;
   const distance = useMemo(
     () => liveDriver && customer ? haversineKm(liveDriver, customer) : null,
     [liveDriver?.lat, liveDriver?.lng, customer?.lat, customer?.lng]
