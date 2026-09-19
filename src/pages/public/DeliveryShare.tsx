@@ -203,6 +203,21 @@ export function DeliveryShare() {
     try {
       const started = await startDeliveryTracking(token);
       if (!started) throw new Error("This delivery link is no longer active.");
+
+      // Keep the exact customer location available after Start Tracking.
+      // Older orders may have the Google Maps link but not persisted coordinates.
+      if ((started.customer_latitude == null || started.customer_longitude == null)
+        && (started.customer_map_link || started.delivery_location_url)) {
+        const coordinates = await resolveDeliveryCoordinates(
+          started.customer_map_link || started.delivery_location_url || ""
+        ).catch(() => null);
+
+        if (coordinates) {
+          started.customer_latitude = coordinates.lat;
+          started.customer_longitude = coordinates.lng;
+        }
+      }
+
       setAssignment(started);
       trackingEnabledRef.current = true;
       await requestWakeLock();
