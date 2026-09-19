@@ -251,6 +251,8 @@ export function DeliveryShare() {
 
   const isBusy = state === "starting" || state === "stopping";
   const hasCustomerLocation = assignment.customer_latitude != null && assignment.customer_longitude != null;
+  const customerMapUrl = assignment.customer_map_link || assignment.delivery_location_url || null;
+  const canOpenCustomerLocation = hasCustomerLocation || Boolean(customerMapUrl);
   const gpsAccuracy = currentLocation?.accuracy;
   const poorAccuracy = gpsAccuracy != null && gpsAccuracy > POOR_ACCURACY_M;
   const driverPoint = currentLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : null;
@@ -290,8 +292,20 @@ export function DeliveryShare() {
               <p className="font-semibold">{assignment.customer_name}</p>
               {phone ? <a href={`tel:${phone}`} className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"><Phone className="h-4 w-4" />{assignment.customer_mobile}</a> : <p className="mt-1 text-sm text-muted-foreground">Phone number unavailable</p>}
               <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{assignment.customer_address || "Saved delivery location"}</p>
-              <Button className="mt-3 h-11 w-full" disabled={!hasCustomerLocation} onClick={() => openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false)}><MapPin className="h-4 w-4" /> OPEN CUSTOMER LOCATION IN GOOGLE MAPS</Button>
-              {!hasCustomerLocation && <p className="mt-2 text-xs text-warning">Customer coordinates are not saved for this order.</p>}
+              <Button
+                className="mt-3 h-11 w-full"
+                disabled={!canOpenCustomerLocation}
+                onClick={() => {
+                  if (hasCustomerLocation) {
+                    openMaps(assignment.customer_latitude!, assignment.customer_longitude!, false);
+                  } else if (customerMapUrl) {
+                    window.open(customerMapUrl, "_blank", "noopener,noreferrer");
+                  }
+                }}
+              >
+                <MapPin className="h-4 w-4" /> OPEN CUSTOMER LOCATION IN GOOGLE MAPS
+              </Button>
+              {!canOpenCustomerLocation && <p className="mt-2 text-xs text-warning">Customer location is not available for this order.</p>}
             </div>
 
             {!isSharing && <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground"><p className="font-medium text-foreground">Start the delivery first</p><p className="mt-1">After GPS starts, the map will show your live position against the saved customer location.</p></div>}
