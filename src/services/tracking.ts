@@ -42,6 +42,8 @@ export interface DeliveryAssignment {
   customer_address: string | null;
   customer_latitude: number | null;
   customer_longitude: number | null;
+  customer_map_link?: string | null;
+  delivery_location_url?: string | null;
   status: "out_for_delivery" | "delivered";
   tracking_active: boolean;
 }
