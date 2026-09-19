@@ -21,11 +21,23 @@ export function AdminLiveDeliveryMap() {
   const latestUpdatedAt = useRef(0);
 
   const applyDriverLocation = (location: Awaited<ReturnType<typeof getDeliveryPartnerLocation>>) => {
-    if (!location) return;
+    if (!location || !location.active) {
+      latestUpdatedAt.current = 0;
+      setDriver(null);
+      return;
+    }
+
     const updatedAt = location.updated_at ? new Date(location.updated_at).getTime() : 0;
     if (updatedAt < latestUpdatedAt.current) return;
+
+    // Do not keep displaying the driver's last GPS point when the device
+    // stops reporting. The driver normally reports every second; 15 seconds
+    // gives a small network/GPS grace period before hiding the marker.
+    const isFresh = updatedAt > 0 && Date.now() - updatedAt <= 15_000;
     latestUpdatedAt.current = updatedAt;
-    setDriver(location.latitude != null && location.longitude != null ? { lat: location.latitude, lng: location.longitude } : null);
+    setDriver(isFresh && location.latitude != null && location.longitude != null
+      ? { lat: location.latitude, lng: location.longitude }
+      : null);
   };
 
   const load = async () => {
